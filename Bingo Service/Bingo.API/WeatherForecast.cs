@@ -1,4 +1,4 @@
-namespace Bingo.Server
+namespace Bingo.API
 {
     public class WeatherForecast
     {
