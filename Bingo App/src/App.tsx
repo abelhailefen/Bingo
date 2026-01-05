@@ -127,9 +127,6 @@ function App() {
 
             </main>
 
-            <footer className="mt-12 text-slate-500 text-sm">
-                Built with React, Vite & Tailwind CSS
-            </footer>
         </div>
     );
 }
