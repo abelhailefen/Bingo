@@ -54,22 +54,30 @@ function App() {
         try {
             // 1. Create the Room
             const room = await createRoom(`${userName}'s Game`, userId);
-            console.log("Room Created:", room);
 
             if (!room || !room.roomId) {
-                throw new Error("Room creation failed - no ID returned");
+                throw new Error("Room creation failed");
             }
 
-            // 2. Set the ID immediately
+            // 2. Set the ID 
             setRoomId(room.roomId);
 
-            // 3. Join the Room using the ID from the response (not the state yet)
-            const joinData = await joinRoom(room.roomId, userId);
-            console.log("Joined Room:", joinData);
+            // 3. Join the Room
+            await joinRoom(room.roomId, userId);
 
-            // 4. Fetch the room/card data
+            // 4. Fetch the full room data (which now includes cards from Step 1)
             const roomData = await getRoom(room.roomId);
-            // ... set your board here ...
+
+            // 5. Find the card that belongs to THIS user
+            const myCard = roomData.cards?.find((c: any) => c.userId === userId);
+
+            if (myCard && myCard.numbers) {
+                // Transform the backend numbers into the 5x5 grid
+                const formattedBoard = formatBackendCard(myCard.numbers);
+                setBoard(formattedBoard);
+            } else {
+                console.error("Card not found for user", userId);
+            }
 
         } catch (err) {
             console.error("Game Start Error:", err);
@@ -79,10 +87,17 @@ function App() {
         }
     };
 
+    
     const onDraw = async () => {
         if (!roomId) return;
-        await drawNumber(roomId);
+        try {
+            await drawNumber(roomId);
+        } catch (err) {
+            console.error("Draw error", err);
+        }
     };
+   
+
 
     const handleCellClick = (r: number, c: number) => {
         if (gameWon) return;

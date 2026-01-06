@@ -18,30 +18,31 @@ public class RoomsController : ControllerBase
         _context = context;
     }
 
-   /* [HttpPost]
-    public async Task<ActionResult<Room>> CreateRoom([FromBody] string roomName, [FromQuery] long hostUserId)
-    {
-        var room = new Room
-        {
-            Name = roomName,
-            RoomCode = Guid.NewGuid().ToString()[..8].ToUpper(), // Random 8-char code
-            HostUserId = hostUserId,
-            Status = RoomStatusEnum.Waiting,
-            CreatedAt = DateTime.UtcNow
-        };
+    /* [HttpPost]
+     public async Task<ActionResult<Room>> CreateRoom([FromBody] string roomName, [FromQuery] long hostUserId)
+     {
+         var room = new Room
+         {
+             Name = roomName,
+             RoomCode = Guid.NewGuid().ToString()[..8].ToUpper(), // Random 8-char code
+             HostUserId = hostUserId,
+             Status = RoomStatusEnum.Waiting,
+             CreatedAt = DateTime.UtcNow
+         };
 
-        _context.Rooms.Add(room);
-        await _context.SaveChangesAsync();
+         _context.Rooms.Add(room);
+         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetRoom), new { id = room.RoomId }, room);
-    }*/
-
+         return CreatedAtAction(nameof(GetRoom), new { id = room.RoomId }, room);
+     }*/
     [HttpGet("{id}")]
     public async Task<ActionResult<Room>> GetRoom(long id)
     {
         var room = await _context.Rooms
             .Include(r => r.Players).ThenInclude(p => p.User)
             .Include(r => r.CalledNumbers)
+            .Include(r => r.Cards)
+                .ThenInclude(c => c.Numbers)
             .FirstOrDefaultAsync(r => r.RoomId == id);
 
         return room == null ? NotFound() : room;
@@ -164,4 +165,5 @@ public class RoomsController : ControllerBase
 
         return CreatedAtAction(nameof(GetRoom), new { id = room.RoomId }, room);
     }
+ 
 }

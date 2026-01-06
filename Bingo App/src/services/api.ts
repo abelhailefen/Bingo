@@ -7,12 +7,18 @@ export interface CardNumber {
     isMarked: boolean;
 }
 
+export interface Card {
+    cardId: number;
+    userId: number;
+    numbers: CardNumber[];
+}
 export interface Room {
     roomId: number;
     roomCode: string;
     name: string;
     status: number;
     calledNumbers: { number: number }[];
+    cards: Card[];
 }
 
 export const createRoom = async (name: string, hostId: number): Promise<Room> => {
