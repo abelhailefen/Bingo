@@ -48,44 +48,44 @@ public class TelegramBotService : BackgroundService
     {
         if (update.Message is not { Text: { } messageText } message) return;
         var chatId = message.Chat.Id;
-
         var command = messageText.Split(' ')[0].ToLower();
 
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<BingoDbContext>();
+        // 1. Move the DB scope INSIDE the switch or after the /start check
+        // This allows /start to work even if the DB is having issues
 
         switch (command)
         {
             case "/start":
-                var webAppUrl = "https://your-ui-url.com"; 
+                var webAppUrl = "https://bingo-beta-one.vercel.app/";
 
                 var inlineKeyboard = new InlineKeyboardMarkup(new[]
                 {
-                    new []
-                {
-                    InlineKeyboardButton.WithWebApp("Open Bingo Game", new WebAppInfo { Url = webAppUrl })
-                }
-              });
+                new [] { InlineKeyboardButton.WithWebApp("Open Bingo Game", new WebAppInfo { Url = webAppUrl }) }
+            });
 
                 await botClient.SendMessage(
                     chatId: chatId,
-                    text: "Welcome to Bingo! Click the button below to start playing:",
+                    text: "Welcome to Bingo! Click the button below:",
                     replyMarkup: inlineKeyboard,
                     cancellationToken: ct
                 );
                 break;
 
             case "/newroom":
-                await CreateRoomCommand(chatId, db, botClient, ct);
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<BingoDbContext>();
+                    await CreateRoomCommand(chatId, db, botClient, ct);
+                }
                 break;
 
             case "/join":
                 var code = messageText.Split(' ').Length > 1 ? messageText.Split(' ')[1] : "";
-                await JoinRoomCommand(chatId, code, db, botClient, message.From?.Username ?? "Player", ct);
-                break;
-
-            default:
-                await botClient.SendMessage(chatId, "Unknown command.", cancellationToken: ct);
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<BingoDbContext>();
+                    await JoinRoomCommand(chatId, code, db, botClient, message.From?.Username ?? "Player", ct);
+                }
                 break;
         }
     }
