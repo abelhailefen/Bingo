@@ -6,30 +6,30 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- 1. CONNECTION STRING LOGIC ---
-// Look for 'ConnectionStrings:DefaultConnection' (from appsettings or Render Env Var)
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+Console.WriteLine("=== BINGO BACKEND STARTING ===");
 
-// Fallback to 'DATABASE_URL' (Render's internal variable) if the above is empty
-if (string.IsNullOrWhiteSpace(connectionString))
+// 1. Prioritize DATABASE_URL (Render's internal variable)
+// Then check for ConnectionStrings:DefaultConnection
+string? rawConnectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
+                             ?? builder.Configuration.GetConnectionString("DefaultConnection")
+                             ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+
+if (string.IsNullOrWhiteSpace(rawConnectionString))
 {
-    connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+    Console.WriteLine("CRITICAL: No connection string found in environment variables!");
+    throw new Exception("Missing Database Connection String");
 }
 
-Console.WriteLine("--- System Startup ---");
+// 2. Clean the string (Remove any hidden spaces or quotes from index 0)
+string connectionString = rawConnectionString.Trim().Replace("\"", "");
 
-if (string.IsNullOrWhiteSpace(connectionString))
-{
-    Console.WriteLine("ERROR: No connection string found in Environment Variables or Configuration.");
-    throw new Exception("Connection string is missing.");
-}
+Console.WriteLine($"Debug: Connection string length: {connectionString.Length}");
+Console.WriteLine($"Debug: First 10 characters: {connectionString.Substring(0, Math.Min(10, connectionString.Length))}");
 
-connectionString = connectionString.Trim();
-
-// If the string is a URI (starts with postgres://), convert it for Npgsql
+// 3. Convert URI format (postgres://) to Npgsql Key-Value format
 if (connectionString.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase))
 {
-    Console.WriteLine("Detected URI format (postgres://). Converting to Key-Value format...");
+    Console.WriteLine("Action: Converting postgres:// URI to Key-Value format...");
     try
     {
         var databaseUri = new Uri(connectionString);
@@ -42,62 +42,58 @@ if (connectionString.StartsWith("postgres://", StringComparison.OrdinalIgnoreCas
                            $"Password={userInfo[1]};" +
                            $"SSL Mode=Require;Trust Server Certificate=true;";
 
-        Console.WriteLine("Conversion successful.");
+        Console.WriteLine("Action: Conversion complete.");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"ERROR parsing connection string: {ex.Message}");
+        Console.WriteLine($"CRITICAL: Error parsing URI: {ex.Message}");
         throw;
     }
 }
+else
+{
+    Console.WriteLine("Action: Using connection string as-is (Already in Key-Value format).");
+    // Ensure SSL is enabled for Render if not already in the string
+    if (!connectionString.Contains("SSL Mode", StringComparison.OrdinalIgnoreCase))
+    {
+        connectionString += ";SSL Mode=Require;Trust Server Certificate=true;";
+    }
+}
 
-// --- 2. CONFIGURE NPGSQL DATA SOURCE ---
-// This is required for mapping Enums to Postgres
-var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+// --- DATABASE & SERVICES SETUP ---
 
-// Map your C# enums to the Postgres types
-dataSourceBuilder.MapEnum<RoomStatusEnum>();
-dataSourceBuilder.MapEnum<WinPatternEnum>();
-dataSourceBuilder.MapEnum<WinTypeEnum>();
+try
+{
+    var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+    dataSourceBuilder.MapEnum<RoomStatusEnum>();
+    dataSourceBuilder.MapEnum<WinPatternEnum>();
+    dataSourceBuilder.MapEnum<WinTypeEnum>();
+    var dataSource = dataSourceBuilder.Build();
 
-var dataSource = dataSourceBuilder.Build();
+    builder.Services.AddDbContext<BingoDbContext>(options =>
+        options.UseNpgsql(dataSource)
+               .UseSnakeCaseNamingConvention());
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"CRITICAL: Npgsql Setup Failed: {ex.Message}");
+    throw;
+}
 
-// --- 3. REGISTER SERVICES ---
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-
-// Configure CORS for your Vercel frontend
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll",
-        policy => policy.AllowAnyOrigin()
-                        .AllowAnyMethod()
-                        .AllowAnyHeader());
-});
-
-// Register the DbContext
-builder.Services.AddDbContext<BingoDbContext>(options =>
-    options.UseNpgsql(dataSource)
-           .UseSnakeCaseNamingConvention());
-
-// Register the Telegram Bot as a background service
+builder.Services.AddCors(o => o.AddPolicy("AllowAll", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
 builder.Services.AddHostedService<TelegramBotService>();
 
 var app = builder.Build();
 
-// --- 4. CONFIGURE HTTP PIPELINE ---
-
-// Enable Swagger on all environments for now so you can test on Render easily
 app.UseSwagger();
 app.UseSwaggerUI();
-
 app.UseCors("AllowAll");
 app.UseAuthorization();
 app.MapControllers();
+app.MapGet("/", () => "Bingo API is Online");
 
-// Simple health check endpoint for Render
-app.MapGet("/", () => "Bingo API is running and Bot is active!");
-
-Console.WriteLine("Application starting...");
+Console.WriteLine("=== APPLICATION READY ===");
 app.Run();
