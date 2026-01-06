@@ -1,132 +1,148 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import type { BingoBoard as BingoBoardType } from './utils/gameLogic';
-import {
-    generateBingoBoard,
-    checkWin
-} from './utils/gameLogic';
 import { BingoBoard } from './components/BingoBoard';
 import { ControlPanel } from './components/ControlPanel';
 import { GameStatus } from './components/GameStatus';
+import { createRoom, joinRoom, getRoom, drawNumber } from './services/api';
+import { formatBackendCard, checkWin } from './utils/gameLogic';
+
+// Access Telegram WebApp
+const tg = (window as any).Telegram?.WebApp;
 
 function App() {
-    const [board, setBoard] = useState<BingoBoardType>(generateBingoBoard());
+    const [board, setBoard] = useState<any[][]>([]);
     const [drawnNumbers, setDrawnNumbers] = useState<number[]>([]);
     const [currentNumber, setCurrentNumber] = useState<number | null>(null);
     const [gameWon, setGameWon] = useState(false);
-    const [gameActive, setGameActive] = useState(false); // Game starts when user clicks "New Game" or on load? Let's say active by default for simplicity, or "Start" state.
+    const [roomId, setRoomId] = useState<number | null>(null);
+    const [loading, setLoading] = useState(false);
 
-    // Initialize game on load
+    // Initialize Telegram
     useEffect(() => {
-        startNewGame();
+        if (tg) {
+            tg.expand(); // Full screen
+            tg.ready();
+        }
     }, []);
 
-    const startNewGame = () => {
-        setBoard(generateBingoBoard());
-        setDrawnNumbers([]);
-        setCurrentNumber(null);
-        setGameWon(false);
-        setGameActive(true);
-    };
+    const userId = tg?.initDataUnsafe?.user?.id || 12345; // Fallback for browser testing
+    const userName = tg?.initDataUnsafe?.user?.first_name || "Guest";
 
-    const drawNumber = useCallback(() => {
-        if (!gameActive || drawnNumbers.length >= 75) return;
+    // Polling for new numbers called by the host
+    useEffect(() => {
+        if (!roomId || gameWon) return;
 
-        let nextNum;
-        do {
-            nextNum = Math.floor(Math.random() * 75) + 1;
-        } while (drawnNumbers.includes(nextNum));
+        const interval = setInterval(async () => {
+            try {
+                const roomData = await getRoom(roomId);
+                const numbers = roomData.calledNumbers.map(n => n.number);
 
-        setDrawnNumbers(prev => [...prev, nextNum]);
-        setCurrentNumber(nextNum);
-    }, [gameActive, drawnNumbers]);
+                if (numbers.length !== drawnNumbers.length) {
+                    setDrawnNumbers(numbers);
+                    setCurrentNumber(numbers[numbers.length - 1]);
+                }
+            } catch (err) {
+                console.error("Polling error", err);
+            }
+        }, 2000);
 
-    const handleCellClick = (rowIndex: number, colIndex: number) => {
-        if (!gameActive || gameWon) return;
+        return () => clearInterval(interval);
+    }, [roomId, drawnNumbers.length, gameWon]);
 
-        setBoard(prevBoard => {
-            const newBoard = [...prevBoard.map(row => [...row])]; // Deep copy structure
-            const cell = newBoard[rowIndex][colIndex];
+    const handleStart = async () => {
+        setLoading(true);
+        try {
+            // 1. Create the Room
+            const room = await createRoom(`${userName}'s Game`, userId);
+            console.log("Room Created:", room);
 
-            // Toggle mark
-            // Note: In real bingo, you toggle. Logic checks if it's called? 
-            // USUALLY digital bingo auto-daubs or lets you daub any. 
-            // Let's allow daubing freely for this "Player Card" simulator, 
-            // OR restrict to only called numbers?
-            // For a fun UI, let's allow toggling freely (maybe user missed a call).
-
-            // Update: Let's enforce that you can only mark if it's been called (or is free) for "Strict Mode"
-            // But for better UX in a solo game, free toggling is often less frustrating if you missed one.
-            // However, to make it a "Game", let's leave it toggleable at will.
-
-            newBoard[rowIndex][colIndex] = { ...cell, marked: !cell.marked };
-
-            // Check win condition immediately after update
-            if (checkWin(newBoard)) {
-                handleWin();
+            if (!room || !room.roomId) {
+                throw new Error("Room creation failed - no ID returned");
             }
 
-            return newBoard;
-        });
+            // 2. Set the ID immediately
+            setRoomId(room.roomId);
+
+            // 3. Join the Room using the ID from the response (not the state yet)
+            const joinData = await joinRoom(room.roomId, userId);
+            console.log("Joined Room:", joinData);
+
+            // 4. Fetch the room/card data
+            const roomData = await getRoom(room.roomId);
+            // ... set your board here ...
+
+        } catch (err) {
+            console.error("Game Start Error:", err);
+            alert(err instanceof Error ? err.message : "Failed to connect to server");
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleWin = () => {
-        if (gameWon) return; // Already won
-        setGameWon(true);
-        confetti({
-            particleCount: 150,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff']
-        });
+    const onDraw = async () => {
+        if (!roomId) return;
+        await drawNumber(roomId);
+    };
 
-        // Play sound? (Optional, skipping for now)
+    const handleCellClick = (r: number, c: number) => {
+        if (gameWon) return;
+        const newBoard = [...board];
+        const cell = newBoard[r][c];
+
+        // Logic: Only allow marking if number was actually drawn (strict bingo)
+        if (cell.value === 'FREE' || drawnNumbers.includes(cell.value)) {
+            cell.marked = !cell.marked;
+            setBoard(newBoard);
+
+            if (checkWin(newBoard)) {
+                setGameWon(true);
+                confetti({ particleCount: 150, spread: 60 });
+                tg.HapticFeedback.notificationOccurred('success');
+            } else {
+                tg.HapticFeedback.impactOccurred('light');
+            }
+        }
     };
 
     return (
-        <div className="min-h-screen flex flex-col items-center py-8 px-4 sm:px-8">
-
-            {/* Header */}
-            <header className="mb-8 text-center">
-                <h1 className="text-5xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 drop-shadow-sm tracking-tighter">
-                    BINGO
+        <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center p-4">
+            <header className="py-4">
+                <h1 className="text-4xl font-black bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
+                    BINGO BOT
                 </h1>
-                <p className="text-slate-400 font-medium">React Edition</p>
             </header>
 
-            <main className="w-full max-w-6xl flex flex-col lg:flex-row gap-8 lg:gap-16 items-start justify-center">
-
-                {/* Left Column: Game Board */}
-                <div className="flex-1 w-full max-w-xl mx-auto lg:mx-0 flex flex-col gap-6">
-                    <BingoBoard
-                        board={board}
-                        onCellClick={handleCellClick}
-                        gameActive={!gameWon}
-                    />
-
-                    {gameWon && (
-                        <div className="bg-gradient-to-r from-yellow-400 to-orange-500 p-4 rounded-xl text-center shadow-lg animate-bounce">
-                            <span className="text-2xl font-black text-white uppercase tracking-widest">Bingo! You Win!</span>
-                        </div>
-                    )}
+            {!roomId ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                    <p className="text-slate-400">Welcome, {userName}!</p>
+                    <button
+                        onClick={handleStart}
+                        disabled={loading}
+                        className="bg-indigo-600 px-8 py-4 rounded-2xl font-bold shadow-lg active:scale-95 transition-all"
+                    >
+                        {loading ? "CONNECTING..." : "START PLAYING"}
+                    </button>
                 </div>
+            ) : (
+                <div className="w-full max-w-md flex flex-col gap-6">
+                    <GameStatus currentNumber={currentNumber} drawnNumbers={drawnNumbers} />
 
-                {/* Right Column: Controls & Status */}
-                <div className="flex-1 w-full max-w-sm mx-auto lg:mx-0 flex flex-col gap-6">
+                    {board.length > 0 && (
+                        <BingoBoard
+                            board={board}
+                            onCellClick={handleCellClick}
+                            gameActive={!gameWon}
+                        />
+                    )}
+
                     <ControlPanel
-                        onDraw={drawNumber}
-                        onReset={startNewGame}
-                        gameActive={gameActive && !gameWon}
+                        onDraw={onDraw}
+                        onReset={handleStart}
+                        gameActive={true}
                         drawnCount={drawnNumbers.length}
                     />
-                    <GameStatus
-                        currentNumber={currentNumber}
-                        drawnNumbers={drawnNumbers}
-                    />
                 </div>
-
-            </main>
-
+            )}
         </div>
     );
 }
