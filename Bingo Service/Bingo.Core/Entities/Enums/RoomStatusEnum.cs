@@ -8,6 +8,6 @@ namespace Bingo.Core.Entities.Enums
 {
     public enum RoomStatusEnum
     {
-        Waiting, InProgress, Completed, Cancelled
+        Waiting, InProgress, Completed, Cancelled //
     }
 }
