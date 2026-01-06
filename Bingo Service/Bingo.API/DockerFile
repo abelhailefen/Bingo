@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# The first part of the path MUST match your GitHub folder name exactly
+# The first part of the path MUST match your GitHub folder name exactly   
 COPY ["Bingo Service/Bingo.API/Bingo.API.csproj", "Bingo Service/Bingo.API/"]
 COPY ["Bingo Service/Bingo.Core/Bingo.Core.csproj", "Bingo Service/Bingo.Core/"]
 COPY ["Bingo Service/Bingo.Infrastructure/Bingo.Infrastructure.csproj", "Bingo Service/Bingo.Infrastructure/"]
