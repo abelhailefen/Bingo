@@ -1,16 +1,18 @@
-﻿using Bingo.Core.Entities.Enums; // <--- DOUBLE CHECK THIS: Is your Enum folder named 'Enums'?
-using Bingo.Infrastructure.Persistence;
+﻿using Bingo.Core.Entities.Enums; 
+using Bingo.Infrastructure.Context;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using BingoRoom = Bingo.Core.Entities.Room;
-// Fix for the User/Room ambiguity
 using BingoUser = Bingo.Core.Entities.User;
 
-namespace Bingo.API.Services;
+namespace Bingo.Infrastructure.Service;
 
 public class TelegramBotService : BackgroundService
 {
@@ -22,7 +24,6 @@ public class TelegramBotService : BackgroundService
     {
         _config = config;
         _scopeFactory = scopeFactory;
-        // In v22, this remains the same
         _botClient = new TelegramBotClient(_config["TelegramBot:Token"]!);
     }
 
@@ -98,7 +99,7 @@ public class TelegramBotService : BackgroundService
             user = new BingoUser
             {
                 Username = chatId.ToString(),
-                Email = $"{chatId}@telegram.com",
+                PhoneNumber = $"{chatId}@telegram.com",
                 PasswordHash = "TG_USER",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
