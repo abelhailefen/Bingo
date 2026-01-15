@@ -6,31 +6,31 @@ using Bingo.Core.Contract.Repository;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Web;
+using Microsoft.Extensions.Configuration;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Bingo.Core.Auth.Handler;
 
 public class TelegramInitCommandHandler : IRequestHandler<TelegramInitCommand, Response<string>>
 {
     private readonly IBingoRepository _repository;
+    private readonly string _botToken;
 
-    public TelegramInitCommandHandler(IBingoRepository repository)
+    public TelegramInitCommandHandler(IBingoRepository repository, IConfiguration configuration)
     {
         _repository = repository;
+        _botToken = configuration["TelegramBot:Token"] ?? throw new ArgumentNullException("TelegramBot:Token not configured");
     }
 
     public async Task<Response<string>> Handle(TelegramInitCommand request, CancellationToken cancellationToken)
     {
-        // 1. Parse InitData
-        // InitData is a query string like: query_id=...&user=%7B%22id%22%3A123%2C%22first_name%22%3A%22Name%22%7D&auth_date=...&hash=...
-        
-        var parsed = HttpUtility.ParseQueryString(request.InitData);
-        var userJson = parsed["user"];
-        
-        if (string.IsNullOrEmpty(userJson))
+        // 1. Parse and Validate InitData
+        if (!ValidateInitData(request.InitData, _botToken, out var userJson))
         {
-             return Response<string>.Error("Invalid init data: user field missing");
+             return Response<string>.Error("Invalid Telegram authentication data");
         }
-
+        
         TelegramUser? tgUser;
         try
         {
@@ -46,12 +46,7 @@ public class TelegramInitCommandHandler : IRequestHandler<TelegramInitCommand, R
              return Response<string>.Error("Invalid init data: user data null");
         }
 
-        // TODO: Validate Hash using Bot Token (security)
-        // For now, we trust the data as this is an MVP/internal use or handled by API Gateway? 
-        // Ideally verify HMAC-SHA256 signature.
-
         // 2. Find or Create User
-        // Use UserId == TelegramId assumption per schema discussion
         var user = await _repository.FindOneAsync<User>(u => u.UserId == tgUser.Id);
 
         if (user == null)
@@ -61,8 +56,8 @@ public class TelegramInitCommandHandler : IRequestHandler<TelegramInitCommand, R
             {
                 UserId = tgUser.Id, 
                 Username = tgUser.Username ?? $"User_{tgUser.Id}",
-                PhoneNumber = "N/A", // Placeholder
-                PasswordHash = "telegram_auth", // Placeholder
+                PhoneNumber = "N/A",
+                PasswordHash = "telegram_auth",
                 Balance = 0
             };
             
@@ -71,8 +66,55 @@ public class TelegramInitCommandHandler : IRequestHandler<TelegramInitCommand, R
         }
 
         // 3. Generate Token
-        // For now return a dummy token or just the UserId as a string
+        // For MVP returning UserId. In production, use JWT.
         return Response<string>.Success($"Token_For_{user.UserId}");
+    }
+
+    private bool ValidateInitData(string initData, string botToken, out string userJson)
+    {
+        userJson = "";
+        try 
+        {
+            var parsed = HttpUtility.ParseQueryString(initData);
+            var dataCheckArr = new List<string>();
+            string? hash = null;
+
+            foreach (string key in parsed.AllKeys)
+            {
+                if (key == "hash")
+                {
+                    hash = parsed[key];
+                    continue;
+                }
+                
+                if (key == "user")
+                {
+                    userJson = parsed[key]!;
+                }
+
+                dataCheckArr.Add($"{key}={parsed[key]}");
+            }
+
+            if (string.IsNullOrEmpty(hash) || string.IsNullOrEmpty(userJson)) return false;
+
+            // Sort alphabetically
+            dataCheckArr.Sort();
+            var dataCheckString = string.Join("\n", dataCheckArr);
+
+            // HMAC-SHA256
+            var secretKey = HMACSHA256.HashData(Encoding.UTF8.GetBytes("WebAppData"), Encoding.UTF8.GetBytes(botToken));
+            var calculatedHashBytes = HMACSHA256.HashData(secretKey, Encoding.UTF8.GetBytes(dataCheckString));
+            var calculatedHash = Convert.ToHexString(calculatedHashBytes).ToLower();
+
+            // Hash must be lower-case hex string
+            // InitData hash is usually lower case hex
+            
+            return calculatedHash == hash;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private class TelegramUser 
