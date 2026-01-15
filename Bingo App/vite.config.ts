@@ -1,5 +1,5 @@
 import { fileURLToPath, URL } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import plugin from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import fs from 'fs';
@@ -52,25 +52,31 @@ if (!isVercel) {
     }
 }
 
-const target = env.ASPNETCORE_HTTPS_PORT ? `https://localhost:${env.ASPNETCORE_HTTPS_PORT}` :
-    env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';')[0] : 'https://localhost:7084';
+export default defineConfig(({ mode }) => {
+    // Load env file based on `mode` in the current working directory.
+    // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
+    const envVars = loadEnv(mode, process.cwd(), '');
 
-export default defineConfig({
-    plugins: [plugin(), tailwindcss()],
-    resolve: {
-        alias: {
-            '@': fileURLToPath(new URL('./src', import.meta.url))
-        }
-    },
-    server: {
-        proxy: {
-            '^/api': {
-                target,
-                secure: false
+    const target = envVars.API_TARGET ||
+        (env.ASPNETCORE_HTTPS_PORT ? `https://localhost:${env.ASPNETCORE_HTTPS_PORT}` :
+            env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';')[0] : 'https://localhost:7084');
+
+    return {
+        plugins: [plugin(), tailwindcss()],
+        resolve: {
+            alias: {
+                '@': fileURLToPath(new URL('./src', import.meta.url))
             }
         },
-        port: parseInt(env.DEV_SERVER_PORT || '53032'),
-        // 3. Use the conditional config here
-        https: httpsConfig
-    }
-})
+        server: {
+            proxy: {
+                '^/api': {
+                    target,
+                    secure: false
+                }
+            },
+            port: parseInt(env.DEV_SERVER_PORT || '53032'),
+            https: httpsConfig
+        }
+    };
+});
