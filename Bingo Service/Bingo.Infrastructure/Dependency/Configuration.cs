@@ -1,4 +1,4 @@
-﻿using Bingo.Core.BingoGame.Contract.Repository;
+﻿using Bingo.Core.Contract.Repository;
 using Bingo.Infrastructure.Context;
 using Bingo.Infrastructure.Repository;
 using Microsoft.EntityFrameworkCore;

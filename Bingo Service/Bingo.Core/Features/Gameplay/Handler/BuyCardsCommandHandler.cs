@@ -1,5 +1,5 @@
-﻿using Bingo.Core.BingoGame.Contract.Command;
-using Bingo.Core.BingoGame.Contract.Repository;
+﻿using Bingo.Core.Gameplay.Contract.Command;
+using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities;
 using Bingo.Core.Models;
 using MediatR;
@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Bingo.Core.BingoGame.Handler.Command
+namespace Bingo.Core.Gameplay.Handler.Command
 {
     public class BuyCardsCommandHandler : IRequestHandler<BuyCardsCommand, Response<List<Card>>>
     {

@@ -1,18 +1,27 @@
-﻿// Bingo.Infrastructure.Hubs/BingoHub.cs
-using Microsoft.AspNetCore.SignalR;
-using System.Text.RegularExpressions;
+﻿using Microsoft.AspNetCore.SignalR;
+using System.Threading.Tasks;
 
-public class BingoHub : Hub
+namespace Bingo.Infrastructure.Hubs;
+
+public interface IBingoHubClient
 {
-    public async Task JoinRoomGroup(string roomCode) => await Groups.AddToGroupAsync(Context.ConnectionId, roomCode);
+    Task PlayerJoined(long roomId, string username);
+    Task PlayerLeft(long roomId, string username);
+    Task GameStarted(long roomId);
+    Task NumberDrawn(long roomId, int number);
+    Task WinClaimed(long roomId, string username, string winType, decimal prize);
+    Task GameEnded(long roomId);
 }
 
-// Number Calling Service (Pseudo-code)
-public class BingoGameWorker
+public class BingoHub : Hub<IBingoHubClient>
 {
-    private readonly IHubContext<BingoHub> _hubContext;
-    // Every 5 seconds:
-    // 1. Pick random number (1-75)
-    // 2. Save to DB (CalledNumbers)
-    // 3. _hubContext.Clients.Group(roomCode).SendAsync("NewNumber", number);
+    public async Task JoinRoomGroup(string roomId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
+    }
+
+    public async Task LeaveRoomGroup(string roomId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
+    }
 }

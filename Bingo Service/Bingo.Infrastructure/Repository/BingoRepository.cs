@@ -1,4 +1,4 @@
-﻿using Bingo.Core.BingoGame.Contract.Repository;
+﻿using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities;
 using Bingo.Core.Entities.Enums;
 using Bingo.Infrastructure.Context;
@@ -30,12 +30,15 @@ public class BingoRepository : IBingoRepository
     {
         // Example of specific include logic handled in repo
         return await _context.Rooms
+            .Include(r => r.Players)
+                .ThenInclude(p => p.User)
             .FirstOrDefaultAsync(r => r.RoomId == roomId);
     }
 
     public async Task<List<Card>> GetUserCardsInRoomAsync(long userId, long roomId)
     {
         return await _context.Cards
+            .Include(c => c.Numbers)
             .Where(c => c.UserId == userId && c.RoomId == roomId)
             .ToListAsync();
     }
@@ -74,7 +77,10 @@ public class BingoRepository : IBingoRepository
         // 3. Bulk insert all card numbers
         await _context.CardNumbers.AddRangeAsync(cardNumbers);
         await _context.SaveChangesAsync();
-
+        
+        // Reload card with numbers
+        // card.Numbers = cardNumbers; 
+        
         return card;
     }
 
@@ -137,12 +143,26 @@ public class BingoRepository : IBingoRepository
             .ToListAsync();
 
         var grid = new bool[5, 5];
-        foreach (var n in numbers) grid[n.PositionRow, n.PositionCol] = n.IsMarked;
+        foreach (var n in numbers) 
+        {
+            // PositionRow is 1-based or 0-based?
+            // CardGenerator used 1-based (row + 1).
+            // CardNumber.cs says 1-5.
+            // Repositories usually assume DB state. 
+            // If DB is 1-based using smallint.
+            // Array is 0-based.
+            // Let's adjust.
+            if(n.PositionRow >= 1 && n.PositionRow <=5 && n.PositionCol >= 1 && n.PositionCol <= 5)
+            {
+                 grid[n.PositionRow - 1, n.PositionCol - 1] = n.IsMarked;
+            }
+        }
 
         return pattern switch
         {
             WinPatternEnum.FullHouse => numbers.All(n => n.IsMarked),
             WinPatternEnum.Line => CheckLines(grid),
+            WinPatternEnum.Blackout => numbers.All(n => n.IsMarked), // Same as fullhouse for now
             _ => false
         };
     }
@@ -159,6 +179,16 @@ public class BingoRepository : IBingoRepository
             }
             if (rowWin || colWin) return true;
         }
+        
+        // Diagonals?
+        bool d1 = true, d2 = true;
+        for(int i=0; i<5; i++)
+        {
+            if(!grid[i,i]) d1 = false;
+            if(!grid[i, 4-i]) d2 = false;
+        }
+        if (d1 || d2) return true;
+        
         return false;
     }
 
@@ -166,6 +196,14 @@ public class BingoRepository : IBingoRepository
     {
         await _context.Wins.AddAsync(win);
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<User?> GetUserWithDetailsAsync(long userId)
+    {
+        return await _context.Users
+            .Include(u => u.HostedRooms)
+            .Include(u => u.RoomParticipations)
+            .FirstOrDefaultAsync(u => u.UserId == userId);
     }
 
     /* ============================================================
@@ -205,7 +243,7 @@ public class BingoRepository : IBingoRepository
     public async Task DeleteAsync<TEntity>(TEntity entity) where TEntity : class
     {
         _context.Set<TEntity>().Remove(entity);
-        await Task.CompletedTask;
+        await Task.CompletedTask; // Remove is not async
     }
 
     public async Task DeleteAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class

@@ -1,0 +1,6 @@
+using MediatR;
+using Bingo.Core.Models;
+
+namespace Bingo.Core.Features.Rooms.Contract.Command;
+
+public record EndRoomCommand(long RoomId, long UserId) : IRequest<Response<string>>;
