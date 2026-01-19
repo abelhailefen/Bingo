@@ -1,81 +1,167 @@
+﻿import { useEffect, useState, useRef } from 'react';
+import * as signalR from '@microsoft/signalr';
+import { getRoom, getMyCards, claimBingo } from '../services/api';
 
-export const GameRoom = ({ roomId, userId, onLeave }: any) => {
-    const [cards, setCards] = useState<any[]>([]); // Array for up to 2 cards
+export const GameRoom = ({ roomId, userId }: { roomId: number, userId: number }) => {
+    const [cards, setCards] = useState<any[]>([]);
     const [drawnNumbers, setDrawnNumbers] = useState<number[]>([]);
-    const [currentNumber, setCurrentNumber] = useState<string>("");
+    const [currentNumber, setCurrentNumber] = useState<{ letter: string, val: number } | null>(null);
+    const connectionRef = useRef<signalR.HubConnection | null>(null);
 
     useEffect(() => {
-        const fetchStatus = async () => {
+        const initGame = async () => {
+            // 1. Fetch Initial State
             const roomRes = await getRoom(roomId);
-            if (!roomRes.isFailed) {
+            const cardRes = await getMyCards(roomId, userId);
+
+            if (roomRes.data) {
                 const called = roomRes.data.calledNumbers.map((n: any) => n.number);
                 setDrawnNumbers(called);
-                // Logic to display B-1, I-20 etc.
-                const last = called[called.length - 1];
-                if (last) {
-                    const prefix = last <= 15 ? 'B' : last <= 30 ? 'I' : last <= 45 ? 'N' : last <= 60 ? 'G' : 'O';
-                    setCurrentNumber(`${prefix}-${last}`);
-                }
+                updateCurrentNumber(called[called.length - 1]);
             }
+            if (cardRes.data) setCards(cardRes.data);
 
-            const cardRes = await getMyCards(roomId, userId);
-            if (!cardRes.isFailed) {
-                setCards(cardRes.data); // Should contain 1 or 2 cards
-            }
+            // 2. Setup SignalR
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl("/bingohub")
+                .withAutomaticReconnect()
+                .build();
+
+            connection.on("NewNumberCalled", (number: number) => {
+                setDrawnNumbers(prev => [...prev, number]);
+                updateCurrentNumber(number);
+                playPopSound(); // Optional: Add a sound effect
+            });
+
+            await connection.start();
+            await connection.invoke("JoinRoomGroup", roomId.toString());
+            connectionRef.current = connection;
         };
-        fetchStatus();
-        const interval = setInterval(fetchStatus, 3000);
-        return () => clearInterval(interval);
-    }, []);
+
+        initGame();
+        return () => { connectionRef.current?.stop(); };
+    }, [roomId, userId]);
+
+    const updateCurrentNumber = (num: number) => {
+        if (!num) return;
+        const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O';
+        setCurrentNumber({ letter, val: num });
+    };
+    const formatBackendCard = (numbers: any[]) => {
+        // Initialize a 5x5 null grid
+        const grid = Array(5).fill(null).map(() => Array(5).fill(null));
+
+        numbers.forEach(n => {
+            // Subtract 1 because your DB positions are likely 1-indexed (1-5)
+            // and JS arrays are 0-indexed (0-4)
+            grid[n.positionRow - 1][n.positionCol - 1] = n;
+        });
+        return grid;
+    };
+    const handleClaimBingo = async () => {
+        const res = await claimBingo(roomId, userId);
+        if (res.isFailed) alert(res.message);
+        else alert("BINGO CLAIMED! Checking...");
+    };
 
     return (
-        <div className="flex h-screen bg-indigo-900 text-white overflow-hidden">
-            {/* LEFT: 1-75 Progress Board */}
-            <div className="w-1/3 bg-indigo-800 p-2 border-r border-indigo-700 overflow-y-auto">
-                <div className="grid grid-cols-5 gap-1 text-[10px] font-bold">
-                    {['B','I','N','G','O'].map(l => <div key={l} className="text-center py-1 text-yellow-400">{l}</div>)}
-                    {Array.from({ length: 75 }, (_, i) => i + 1).map(num => {
-                        const isDrawn = drawnNumbers.includes(num);
-                        return (
-                            <div key={num} className={`text-center py-1 rounded ${isDrawn ? 'bg-green-600' : 'bg-indigo-400/30 text-indigo-200'}`}>
-                                {num}
-                            </div>
-                        );
-                    })}
+        <div className="flex h-screen bg-[#2e1065] text-white overflow-hidden font-sans">
+
+            {/* LEFT PANEL: 1-75 PROGRESS BOARD */}
+            <div className="w-1/4 bg-[#4338ca]/20 p-2 border-r border-indigo-500/30 flex flex-col">
+                <div className="grid grid-cols-5 gap-1 h-full">
+                    {['B', 'I', 'N', 'G', 'O'].map(l => (
+                        <div key={l} className="text-center font-black text-indigo-300 text-lg mb-2">{l}</div>
+                    ))}
+                    {/* Render numbers 1-75 grouped by column */}
+                    {Array.from({ length: 15 }, (_, i) => i + 1).map(rowIdx => (
+                        [0, 15, 30, 45, 60].map(colOffset => {
+                            const num = rowIdx + colOffset;
+                            const isDrawn = drawnNumbers.includes(num);
+                            return (
+                                <div key={num} className={`flex items-center justify-center rounded-md text-xs font-bold aspect-square transition-colors ${isDrawn ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-white/5 text-white/20'
+                                    }`}>
+                                    {num}
+                                </div>
+                            );
+                        })
+                    ))}
                 </div>
             </div>
 
-            {/* RIGHT: Active Cards & Controls */}
-            <div className="w-2/3 flex flex-col p-4 gap-4 overflow-y-auto">
-                <div className="flex justify-between items-center bg-indigo-950 p-3 rounded-xl">
-                    <div>
-                        <p className="text-xs">Current Call</p>
-                        <h2 className="text-2xl font-black">{currentNumber || "---"}</h2>
+            {/* RIGHT PANEL: GAMEPLAY */}
+            <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto">
+
+                {/* Header Stats */}
+                <div className="grid grid-cols-3 gap-2 bg-black/30 p-4 rounded-2xl border border-white/10">
+                    <div className="text-center">
+                        <p className="text-[10px] uppercase text-indigo-300">Room ID</p>
+                        <p className="font-bold">{roomId}</p>
                     </div>
-                    <div className="text-right">
-                        <p className="text-xs">Players: 84</p>
-                        <p className="text-xs">Call: {drawnNumbers.length}</p>
+                    <div className="text-center border-x border-white/10">
+                        <p className="text-[10px] uppercase text-indigo-300">Players</p>
+                        <p className="font-bold">84</p>
+                    </div>
+                    <div className="text-center">
+                        <p className="text-[10px] uppercase text-indigo-300">Call</p>
+                        <p className="font-bold">{drawnNumbers.length}</p>
                     </div>
                 </div>
 
-                {/* Render Multiple Boards */}
-                <div className="flex flex-col gap-8">
-                    {cards.map((card, idx) => (
-                        <div key={card.cardId} className="relative">
-                            <span className="absolute -top-4 left-0 text-[10px] text-orange-300">Board No.{card.masterCardId}</span>
-                            <BingoBoard 
-                                board={formatBackendCard(card.numbers || card.masterCard.numbers)} 
-                                onCellClick={(r, c) => handleCellClick(idx, r, c)} 
-                                gameActive={true}
-                                // Highlight cells that are drawn
-                                drawnNumbers={drawnNumbers}
-                            />
+                {/* Current Call Display */}
+                <div className="flex items-center justify-between bg-indigo-600/40 p-6 rounded-3xl border-2 border-indigo-500/50">
+                    <h2 className="text-xl font-bold italic">playing...</h2>
+                    <div className="flex items-center gap-4">
+                        <span className="text-indigo-200 font-semibold">Current Call</span>
+                        <div className="w-20 h-20 bg-white rounded-full flex flex-col items-center justify-center shadow-2xl border-4 border-indigo-400">
+                            <span className="text-indigo-900 text-xs font-black leading-none">{currentNumber?.letter}</span>
+                            <span className="text-indigo-900 text-3xl font-black leading-none">{currentNumber?.val}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Player Boards */}
+                <div className="flex flex-col gap-8 pb-24">
+                    {cards.map((card) => (
+                        <div key={card.cardId} className="bg-[#fefce8] p-3 rounded-xl shadow-2xl rotate-1">
+                            <div className="flex justify-between items-center mb-1 px-1">
+                                {['B', 'I', 'N', 'G', 'O'].map((l, i) => (
+                                    <span key={i} className={`w-10 text-center font-black text-lg ${l === 'B' ? 'text-orange-500' : l === 'I' ? 'text-green-600' : l === 'N' ? 'text-blue-600' : l === 'G' ? 'text-red-500' : 'text-purple-600'
+                                        }`}>{l}</span>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-5 gap-1">
+                                {formatBackendCard(card.masterCard.numbers).map((row, rIdx) =>
+                                    row.map((cell: any, cIdx: number) => {
+                                        const isDrawn = cell.number === null || drawnNumbers.includes(cell.number);
+                                        return (
+                                            <div key={`${rIdx}-${cIdx}`} className={`h-12 flex items-center justify-center rounded-lg border-2 border-black/5 text-lg font-black transition-all ${isDrawn ? 'bg-green-500 text-white' : 'bg-white text-slate-800'
+                                                }`}>
+                                                {cell.number ?? '★'}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                            <p className="text-center text-[10px] font-bold text-red-500 mt-2">Board No.{card.masterCardId}</p>
                         </div>
                     ))}
                 </div>
 
-                <button className="bg-red-500 py-4 rounded-xl font-bold text-xl mt-4">BINGO!</button>
+                {/* Footer Claim Button */}
+                <div className="fixed bottom-0 right-0 w-3/4 p-4 bg-indigo-900/80 backdrop-blur-md">
+                    <button
+                        onClick={handleClaimBingo}
+                        className="w-full bg-orange-500 hover:bg-orange-400 py-4 rounded-2xl font-black text-3xl shadow-[0_8px_0_rgb(194,65,12)] active:translate-y-1 active:shadow-none transition-all"
+                    >
+                        BINGO!
+                    </button>
+                </div>
             </div>
         </div>
     );
+};
+
+const playPopSound = () => {
+    try { new Audio('/assets/pop.mp3').play(); } catch (e) { }
 };

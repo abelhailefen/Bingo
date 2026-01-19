@@ -63,5 +63,17 @@ export const drawNumber = async (roomId: number, userId: number): Promise<ApiRes
     const response = await api.post(`/rooms/${roomId}/draw`, { userId });
     return response.data;
 };
+// ... existing imports ...
 
+// Get all cards belonging to the current user in a specific room
+export const getMyCards = async (roomId: number, userId: number): Promise<ApiResponse<any[]>> => {
+    const response = await api.get(`/rooms/${roomId}/users/${userId}/cards`);
+    return response.data;
+};
+
+// Notify the server that the user is claiming a win
+export const claimBingo = async (roomId: number, userId: number): Promise<ApiResponse<any>> => {
+    const response = await api.post(`/rooms/${roomId}/claim`, { userId });
+    return response.data;
+};
 export default api;

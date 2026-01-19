@@ -15,4 +15,5 @@ public class BingoHub : Hub<IBingoHubClient>
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
     }
+
 }
