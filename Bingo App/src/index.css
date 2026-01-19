@@ -62,3 +62,15 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #312e81; /* indigo-900 */
+    border-radius: 10px;
+}

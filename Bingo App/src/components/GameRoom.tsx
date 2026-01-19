@@ -65,32 +65,49 @@ export const GameRoom = ({ roomId, userId }: { roomId: number, userId: number })
     };
 
     return (
-        <div className="flex h-screen bg-[#2e1065] text-white overflow-hidden font-sans">
+        <div className="flex h-screen w-full bg-slate-950 text-white overflow-hidden">
 
             {/* LEFT PANEL: 1-75 PROGRESS BOARD */}
-            <div className="w-1/4 bg-[#4338ca]/20 p-2 border-r border-indigo-500/30 flex flex-col">
-                <div className="grid grid-cols-5 gap-1 h-full">
+            <div className="w-64 bg-slate-900/50 border-r border-white/5 flex flex-col h-full overflow-hidden shrink-0">
+                {/* Headers */}
+                <div className="grid grid-cols-5 gap-1 p-2 bg-slate-900">
                     {['B', 'I', 'N', 'G', 'O'].map(l => (
-                        <div key={l} className="text-center font-black text-indigo-300 text-lg mb-2">{l}</div>
+                        <div key={l} className="text-center font-black text-indigo-400 text-lg">{l}</div>
                     ))}
-                    {/* Render numbers 1-75 grouped by column */}
-                    {Array.from({ length: 15 }, (_, i) => i + 1).map(rowIdx => (
-                        [0, 15, 30, 45, 60].map(colOffset => {
-                            const num = rowIdx + colOffset;
-                            const isDrawn = drawnNumbers.includes(num);
-                            return (
-                                <div key={num} className={`flex items-center justify-center rounded-md text-xs font-bold aspect-square transition-colors ${isDrawn ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-white/5 text-white/20'
-                                    }`}>
-                                    {num}
-                                </div>
-                            );
-                        })
-                    ))}
+                </div>
+
+                {/* Scrollable Numbers Area */}
+                <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+                    <div className="grid grid-cols-5 gap-1">
+                        {/* 
+                We create a flat list of 75 numbers. 
+                The order is: Row 1 (1, 16, 31, 46, 61), Row 2 (2, 17, 32, 47, 62)... 
+            */}
+                        {Array.from({ length: 15 }).map((_, rowIdx) => {
+                            const rowNum = rowIdx + 1;
+                            return [0, 15, 30, 45, 60].map(offset => {
+                                const num = rowNum + offset;
+                                const isDrawn = drawnNumbers.includes(num);
+
+                                return (
+                                    <div
+                                        key={num}
+                                        className={`aspect-square flex items-center justify-center rounded text-[10px] font-bold transition-all duration-300 ${isDrawn
+                                                ? 'bg-green-500 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)] scale-95'
+                                                : 'bg-slate-800 text-slate-600'
+                                            }`}
+                                    >
+                                        {num}
+                                    </div>
+                                );
+                            });
+                        })}
+                    </div>
                 </div>
             </div>
 
             {/* RIGHT PANEL: GAMEPLAY */}
-            <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto">
+            <div className="flex-1 flex flex-col overflow-y-auto p-4 md:p-8 space-y-6">
 
                 {/* Header Stats */}
                 <div className="grid grid-cols-3 gap-2 bg-black/30 p-4 rounded-2xl border border-white/10">
