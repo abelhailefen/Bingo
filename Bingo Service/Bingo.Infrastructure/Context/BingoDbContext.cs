@@ -92,10 +92,9 @@ public class BingoDbContext : DbContext
                 .HasColumnName("name")
                 .HasMaxLength(100)
                 .IsRequired();
-
-            entity.Property(e => e.HostUserId)
-                .HasColumnName("host_user_id")
-                .IsRequired();
+            entity.Property(e => e.ScheduledStartTime)
+                .HasColumnName("scheduled_start_time");
+           
 
             // ENUM CONVERTED TO INT
             entity.Property(e => e.Status)
@@ -128,10 +127,7 @@ public class BingoDbContext : DbContext
             entity.Property(e => e.EndedAt)
                 .HasColumnName("ended_at");
 
-            entity.HasOne(e => e.Host)
-                .WithMany(u => u.HostedRooms)
-                .HasForeignKey(e => e.HostUserId)
-                .OnDelete(DeleteBehavior.Cascade);
+           
         });
 
         /* ============================================================

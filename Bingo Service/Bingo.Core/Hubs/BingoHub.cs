@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using Bingo.Core.Contract.Hub;
 
-namespace Bingo.Infrastructure.Hubs;
+namespace Bingo.Core.Hubs;
 public class BingoHub : Hub<IBingoHubClient>
 {
     public async Task JoinRoomGroup(string roomId)

@@ -30,7 +30,7 @@ namespace Bingo.Core.Features.Gameplay.Handler
                 {
                     Name = "Global Lobby",
                     RoomCode = Guid.NewGuid().ToString()[..6].ToUpper(),
-                    HostUserId = request.UserId,
+                    //HostUserId = request.UserId,
                     Status = RoomStatusEnum.Waiting,
                     MaxPlayers = 100,
                     CardPrice = 0,

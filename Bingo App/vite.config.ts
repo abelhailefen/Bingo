@@ -74,12 +74,17 @@ export default defineConfig(({ mode }) => {
         },
         server: {
             proxy: {
-                '^/api': {
-                    target,
+                '/api': {
+                    target: 'https://localhost:7084', // Match your backend port
+                    secure: false
+                },
+                '/bingohub': {
+                    target: 'https://localhost:7084',
+                    ws: true, // Crucial for SignalR
                     secure: false
                 }
             },
-            port: parseInt(env.DEV_SERVER_PORT || '53032'),
+            port: 53032, // Frontend port
             https: httpsConfig
         }
     };

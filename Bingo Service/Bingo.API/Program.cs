@@ -1,5 +1,5 @@
 using Bingo.Core.Services;
-using Bingo.Infrastructure.Hubs;
+using Bingo.Core.Hubs;
 
 using Bingo.Core.Entities.Enums;
 using Bingo.Infrastructure.Context;
@@ -20,12 +20,12 @@ builder.Services.AddSignalR();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+// Program.cs
 builder.Services.AddCors(o => o.AddPolicy("AllowAll", p =>
-    p.WithOrigins("http://localhost:53032") // Use your actual React URL here
+    p.WithOrigins("http://localhost:5173") // Standard Vite port
      .AllowAnyMethod()
      .AllowAnyHeader()
-     .AllowCredentials())); // Required for SignalRbuilder.Services.AddHostedService<TelegramBotService>();
-
+     .AllowCredentials()));
 var app = builder.Build();
 
 app.UseSwagger();

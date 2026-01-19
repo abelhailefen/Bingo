@@ -29,7 +29,7 @@ public class CreateRoomCommandHandler : IRequestHandler<CreateRoomCommand, Respo
 
         var room = new Room
         {
-            HostUserId = request.HostUserId,
+           //HostUserId = request.HostUserId,
             Name = request.Name,
             MaxPlayers = request.MaxPlayers,
             CardPrice = request.CardPrice,

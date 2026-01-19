@@ -29,10 +29,10 @@ public class StartRoomCommandHandler : IRequestHandler<StartRoomCommand, Respons
             return Response<string>.NotFound("Room not found");
         }
 
-        if (room.HostUserId != request.UserId)
+        /*if (room.HostUserId != request.UserId)
         {
             return Response<string>.Error("Only host can start the room");
-        }
+        }*/
 
         if (room.Status != RoomStatusEnum.Waiting)
         {

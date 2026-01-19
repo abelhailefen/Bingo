@@ -174,7 +174,6 @@ public class BingoRepository : IBingoRepository
     public async Task<User?> GetUserWithDetailsAsync(long userId)
     {
         return await _context.Users
-            .Include(u => u.HostedRooms)
             .Include(u => u.RoomParticipations)
             .FirstOrDefaultAsync(u => u.UserId == userId);
     }

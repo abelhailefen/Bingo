@@ -17,7 +17,6 @@ namespace Bingo.Core.Entities
         public DateTime UpdatedAt { get; set; }
 
         // Navigation
-        public ICollection<Room> HostedRooms { get; set; } = new List<Room>();
         public ICollection<RoomPlayer> RoomParticipations { get; set; } = new List<RoomPlayer>();
     }
 }

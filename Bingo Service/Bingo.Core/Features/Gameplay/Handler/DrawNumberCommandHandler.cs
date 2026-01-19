@@ -23,7 +23,7 @@ public class DrawNumberCommandHandler : IRequestHandler<DrawNumberCommand, Respo
         var room = await _repository.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
 
         if (room == null) return Response<short>.NotFound("Room not found");
-        if (room.HostUserId != request.UserId) return Response<short>.Error("Only host can draw numbers");
+       // if (room.HostUserId != request.UserId) return Response<short>.Error("Only host can draw numbers");
         if (room.Status != RoomStatusEnum.InProgress) return Response<short>.Error("Game is not in progress");
 
         // Get Called Numbers

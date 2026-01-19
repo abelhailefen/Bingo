@@ -8,7 +8,7 @@ using Bingo.Core.Features.Rooms.Contract.Command;
 using Bingo.Core.Features.Rooms.Contract.Query;
 using Bingo.Core.Features.Rooms.DTOs;
 using Bingo.Core.Models;
-using Bingo.Infrastructure.Hubs;
+using Bingo.Core.Hubs;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
