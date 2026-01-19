@@ -45,14 +45,17 @@ namespace Bingo.Core.Features.Gameplay.Handler
             {
                 MasterCardId = masterCard.MasterCardId,
                 IsAvailable = true,
-                Numbers = masterCard.Numbers.Select(n => new CardNumberDto
-                {
-                    Number = n.Number,
-                    PositionRow = n.PositionRow,
-                    PositionCol = n.PositionCol,
-                    // For preview, only the center star is marked
-                    IsMarked = n.Number == null
-                }).ToList()
+                Numbers = masterCard.Numbers
+                    // CRITICAL: Sort by Row first, then Column for CSS Grid Row-Major layout
+                    .OrderBy(n => n.PositionRow)
+                    .ThenBy(n => n.PositionCol)
+                    .Select(n => new CardNumberDto
+                    {
+                        Number = n.Number,
+                        PositionRow = n.PositionRow,
+                        PositionCol = n.PositionCol,
+                        IsMarked = n.Number == null
+                    }).ToList()
             };
 
             return Response<MasterCardDto>.Success(dto);
