@@ -8,16 +8,30 @@ const tg = (window as any).Telegram?.WebApp;
 function App() {
     const [roomId, setRoomId] = useState<number | null>(null);
 
-    // Initialize Telegram
+    const [userId, setUserId] = useState<number>(tg?.initDataUnsafe?.user?.id || 12345);
+    const [userName, setUserName] = useState<string>(tg?.initDataUnsafe?.user?.first_name || "Guest");
+    
+    // Initialize Auth (Telegram or Dev)
     useEffect(() => {
-        if (tg) {
-            tg.expand();
-            tg.ready();
-        }
-    }, []);
+        const initAuth = async () => {
+            if (tg?.initData) {
+                tg.expand();
+                tg.ready();
+                // Real Telegram Auth would go here (calling telegramInit)
+            } else {
+                // Dev Auth for Browser
+                try {
+                    const { devLogin } = await import('./services/api');
+                    await devLogin(userId, userName);
+                    console.log("Dev Login Successful for user:", userId);
+                } catch (e) {
+                    console.error("Dev Login Failed", e);
+                }
+            }
+        };
 
-    const userId = tg?.initDataUnsafe?.user?.id || 12345;
-    const userName = tg?.initDataUnsafe?.user?.first_name || "Guest";
+        initAuth();
+    }, []);
 
     return (
         <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center p-4">

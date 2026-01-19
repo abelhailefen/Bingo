@@ -61,6 +61,10 @@ export default defineConfig(({ mode }) => {
         (env.ASPNETCORE_HTTPS_PORT ? `https://localhost:${env.ASPNETCORE_HTTPS_PORT}` :
             env.ASPNETCORE_URLS ? env.ASPNETCORE_URLS.split(';')[0] : 'https://localhost:7084');
 
+    console.log("--------------------------------------------------");
+    console.log("Vite Proxy Target:", target);
+    console.log("--------------------------------------------------");
+
     return {
         plugins: [plugin(), tailwindcss()],
         resolve: {

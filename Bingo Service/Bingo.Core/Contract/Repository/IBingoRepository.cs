@@ -10,10 +10,18 @@ public interface IBingoRepository
     Task<Room?> GetRoomByCodeAsync(string code);
     Task<Room?> GetActiveRoomWithPlayersAsync(long roomId);
     Task<List<Card>> GetUserCardsInRoomAsync(long userId, long roomId);
-    Task<Card> CreateCardWithNumbersAsync(long userId, long roomId, List<List<int>> matrix);
-    Task<bool> MarkNumberOnCardAsync(long cardId, int number);
-    Task<List<short>> GetCalledNumbersAsync(long roomId);
-    Task AddCalledNumberAsync(long roomId, short number);
+
+    // Updated: Replaced CreateCardWithNumbersAsync with PickMasterCardAsync
+    Task<Card> PickMasterCardAsync(long userId, long roomId, int masterCardId);
+    Task<MasterCard> GetMasterCard(long masterCardId, CancellationToken ct);
+    Task<Room> GetAvailableRoom(CancellationToken ct);
+    Task<List<long>> GetTakenCards(long roomId, CancellationToken ct);
+    // Removed: MarkNumberOnCardAsync (Marking is now calculated on-the-fly)
+
+    // Updated: Types changed to int to match Entity and DTOs
+    Task<List<int>> GetCalledNumbersAsync(long roomId);
+    Task AddCalledNumberAsync(long roomId, int number);
+
     Task UpdateRoomStatusAsync(long roomId, RoomStatusEnum status);
     Task<bool> VerifyWinAsync(long cardId, WinPatternEnum pattern);
     Task RecordWinAsync(Win win);

@@ -9,6 +9,11 @@ using System.Threading.Tasks;
 
 namespace Bingo.Core.Gameplay.Contract.Command
 {
-    public record BuyCardsCommand(int UserId, int RoomId, int Quantity) : IRequest<Response<List<Card>>>;
+   public record BuyCardsCommand(
+    long UserId, 
+    long RoomId, 
+    int Quantity, 
+    List<int>? ChosenMasterCardIds = null
+) : IRequest<Response<List<Card>>>;
 
 }

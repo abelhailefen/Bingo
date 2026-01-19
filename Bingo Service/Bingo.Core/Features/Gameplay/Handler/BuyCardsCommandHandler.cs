@@ -1,57 +1,81 @@
 ﻿using Bingo.Core.Gameplay.Contract.Command;
 using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities;
+using Bingo.Core.Entities.Enums;
 using Bingo.Core.Models;
 using MediatR;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace Bingo.Core.Gameplay.Handler.Command
+namespace Bingo.Core.Gameplay.Handler.Command;
+
+public class BuyCardsCommandHandler : IRequestHandler<BuyCardsCommand, Response<List<Card>>>
 {
-    public class BuyCardsCommandHandler : IRequestHandler<BuyCardsCommand, Response<List<Card>>>
+    private readonly IBingoRepository _repo;
+
+    public BuyCardsCommandHandler(IBingoRepository repo)
     {
-        private readonly IBingoRepository _repo;
+        _repo = repo;
+    }
 
-        public BuyCardsCommandHandler(IBingoRepository repo)
+    public async Task<Response<List<Card>>> Handle(BuyCardsCommand request, CancellationToken ct)
+    {
+        // 1. Fetch Room and User
+        var room = await _repo.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
+        var user = await _repo.FindOneAsync<User>(u => u.UserId == request.UserId);
+
+        if (room == null) return Response<List<Card>>.NotFound("Room not found");
+        if (user == null) return Response<List<Card>>.NotFound("User not found");
+
+        // 2. Room Status Check (Can only buy while waiting)
+        if (room.Status != RoomStatusEnum.Waiting)
+            return Response<List<Card>>.Error("Cannot buy cards. Game has already started or ended.");
+
+        // 3. Max 2 Cards Logic
+        var existingCards = await _repo.GetUserCardsInRoomAsync(user.UserId, room.RoomId);
+        int totalRequested = request.ChosenMasterCardIds?.Count ?? request.Quantity;
+
+        if (existingCards.Count + totalRequested > 2)
+            return Response<List<Card>>.Error("You can only have a maximum of 2 cards per room.");
+
+        // 4. Balance Check
+        decimal totalCost = room.CardPrice * totalRequested;
+        if (user.Balance < totalCost)
+            return Response<List<Card>>.Error("Insufficient balance");
+
+        // 5. Determine which MasterCard IDs to assign
+        var idsToAssign = new List<int>();
+        if (request.ChosenMasterCardIds != null && request.ChosenMasterCardIds.Any())
         {
-            _repo = repo;
+            idsToAssign = request.ChosenMasterCardIds;
         }
-
-        public async Task<Response<List<Card>>> Handle(BuyCardsCommand request, CancellationToken ct)
+        else
         {
-            var room = await _repo.FindOneAsync<Room>(r =>r.RoomId == request.RoomId);
-            var user = await _repo.FindOneAsync<User>(r => r.UserId == request.RoomId);
-
-            decimal totalCost = room.CardPrice * request.Quantity;
-            if (user.Balance < totalCost) return Response<List<Card>>.Error("Insufficient balance");
-
-            user.Balance -= totalCost;
-            var cards = new List<Card>();
-
-            for (int i = 0; i < request.Quantity; i++)
-            {
-                var matrix = GenerateBingoMatrix();
-                cards.Add(await _repo.CreateCardWithNumbersAsync(user.UserId, room.RoomId, matrix));
-            }
-
-            return Response<List<Card>>.Success(cards);
-        }
-
-        private List<List<int>> GenerateBingoMatrix()
-        {
-            // Standard Bingo: Col 0 (1-15), Col 1 (16-30)...
+            // Pick random IDs from 1-100 that the user doesn't already have
+            var existingTemplateIds = existingCards.Select(c => (int)c.MasterCardId).ToHashSet();
             var rng = new Random();
-            var matrix = Enumerable.Range(0, 5).Select(_ => new List<int>(new int[5])).ToList();
-            for (int col = 0; col < 5; col++)
+            while (idsToAssign.Count < request.Quantity)
             {
-                var nums = Enumerable.Range(col * 15 + 1, 15).OrderBy(_ => rng.Next()).Take(5).ToList();
-                for (int row = 0; row < 5; row++) matrix[row][col] = nums[row];
+                int randomId = rng.Next(1, 101); // 1 to 100
+                if (!existingTemplateIds.Contains(randomId) && !idsToAssign.Contains(randomId))
+                {
+                    idsToAssign.Add(randomId);
+                }
             }
-            matrix[2][2] = 0; // Center Free Space
-            return matrix;
         }
+
+        // 6. Process Purchase
+        user.Balance -= totalCost;
+        var purchasedCards = new List<Card>();
+
+        foreach (var masterId in idsToAssign)
+        {
+            // PickMasterCardAsync creates the Card record linking User-Room-MasterTemplate
+            var newCard = await _repo.PickMasterCardAsync(user.UserId, room.RoomId, masterId);
+            purchasedCards.Add(newCard);
+        }
+
+        // Save balance update and card creations
+        await _repo.SaveChanges();
+
+        return Response<List<Card>>.Success(purchasedCards);
     }
 }

@@ -1,4 +1,5 @@
 using Bingo.Core.Auth.Contract.Command;
+
 using Bingo.Core.Auth.Contract.Query;
 using Bingo.Core.Models;
 using MediatR;
@@ -54,4 +55,11 @@ public class AuthController : ControllerBase
     }
     
     public record TelegramInitRequest(string InitData);
+
+    [HttpPost("dev-login")]
+    public async Task<ActionResult<Response<string>>> DevLogin([FromBody] DevLoginCommand command)
+    {
+        var result = await _mediator.Send(command);
+        return Ok(result);
+    }
 }

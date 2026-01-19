@@ -18,5 +18,9 @@ namespace Bingo.Core.Entities
         public DateTime? VerifiedAt { get; set; }
         public decimal Prize { get; set; }
         public WinTypeEnum WinType { get; set; }
+
+        public Room Room { get; set; } = null!;
+        public Card Card { get; set; } = null!;
+        public User User { get; set; } = null!;
     }
 }

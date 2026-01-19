@@ -1,0 +1,61 @@
+﻿using Bingo.Core.Contract.Repository;
+using Bingo.Core.Entities;
+using Bingo.Core.Features.Gameplay.Contract.Query;
+using Bingo.Core.Features.Gameplay.DTOs;
+using Bingo.Core.Features.Rooms.DTOs;
+using Bingo.Core.Models;
+using MediatR;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Bingo.Core.Features.Gameplay.Handler
+{
+    public class GetMasterCardQueryHandler : IRequestHandler<GetMasterCardQuery, Response<MasterCardDto>>
+    {
+        private readonly IBingoRepository _repository;
+
+        public GetMasterCardQueryHandler(IBingoRepository repository)
+        {
+            _repository = repository;
+        }
+
+        public async Task<Response<MasterCardDto>> Handle(GetMasterCardQuery request, CancellationToken cancellationToken)
+        {
+            // 1. Get the Master Template
+
+            var masterCard = await _repository.GetMasterCard(request.MasterCardId, cancellationToken);
+
+            if (masterCard == null) return Response<MasterCardDto>.NotFound("Template not found");
+
+            // 2. Check if anyone in this room has ALREADY purchased this card
+            var isTaken = await _repository.CountAsync<Card>(c =>
+                c.RoomId == request.RoomId && c.MasterCardId == request.MasterCardId) > 0;
+
+            if (isTaken)
+            {
+                return Response<MasterCardDto>.Error("This card has already been taken by another player.");
+            }
+
+            // 3. Map to DTO
+            var dto = new MasterCardDto
+            {
+                MasterCardId = masterCard.MasterCardId,
+                IsAvailable = true,
+                Numbers = masterCard.Numbers.Select(n => new CardNumberDto
+                {
+                    Number = n.Number,
+                    PositionRow = n.PositionRow,
+                    PositionCol = n.PositionCol,
+                    // For preview, only the center star is marked
+                    IsMarked = n.Number == null
+                }).ToList()
+            };
+
+            return Response<MasterCardDto>.Success(dto);
+        }
+    }
+}

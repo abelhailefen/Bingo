@@ -11,10 +11,12 @@ namespace Bingo.Core.Entities
         public long CardId { get; set; }
         public long RoomId { get; set; }
         public long UserId { get; set; }
-        public DateTime PurchasedAt { get; set; }
+        public long MasterCardId { get; set; } 
 
         public Room Room { get; set; } = null!;
         public User User { get; set; } = null!;
-        public ICollection<CardNumber> Numbers { get; set; } = new List<CardNumber>();
+        public MasterCard MasterCard { get; set; } = null!;
+        public DateTime PurchasedAt { get; set; }
     }
 }
+

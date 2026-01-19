@@ -4,6 +4,7 @@ using Bingo.Core.Entities.Enums;
 using Bingo.Infrastructure.Context;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
+using System.Threading;
 
 namespace Bingo.Infrastructure.Repository;
 
@@ -28,84 +29,61 @@ public class BingoRepository : IBingoRepository
 
     public async Task<Room?> GetActiveRoomWithPlayersAsync(long roomId)
     {
-        // Example of specific include logic handled in repo
         return await _context.Rooms
             .Include(r => r.Players)
                 .ThenInclude(p => p.User)
+            .Include(r => r.CalledNumbers)
+            .Include(r => r.Cards)
+                .ThenInclude(c => c.MasterCard)
+                    .ThenInclude(m => m.Numbers)
             .FirstOrDefaultAsync(r => r.RoomId == roomId);
     }
 
     public async Task<List<Card>> GetUserCardsInRoomAsync(long userId, long roomId)
     {
         return await _context.Cards
-            .Include(c => c.Numbers)
+            .Include(c => c.MasterCard)
+                .ThenInclude(m => m.Numbers)
             .Where(c => c.UserId == userId && c.RoomId == roomId)
             .ToListAsync();
     }
+    public async Task<MasterCard> GetMasterCard(long masterCardId, CancellationToken ct)
+    {
+        var query = await GetQueryAsync<MasterCard>(m => m.MasterCardId == masterCardId);
+        var masterCard = await query.Include(m => m.Numbers).FirstOrDefaultAsync(ct);
 
-    public async Task<Card> CreateCardWithNumbersAsync(long userId, long roomId, List<List<int>> matrix)
+        return masterCard;
+    }
+    public async Task<Card> PickMasterCardAsync(long userId, long roomId, int masterCardId)
     {
         var card = new Card
         {
             UserId = userId,
             RoomId = roomId,
+            MasterCardId = masterCardId,
             PurchasedAt = DateTime.UtcNow
         };
 
-        // 1. Add and Save Card first to generate the CardId (long)
         await _context.Cards.AddAsync(card);
         await _context.SaveChangesAsync();
 
-        var cardNumbers = new List<CardNumber>();
+        // Load templates so DTOs can be built immediately
+        await _context.Entry(card).Reference(c => c.MasterCard).LoadAsync();
+        await _context.Entry(card.MasterCard).Collection(m => m.Numbers).LoadAsync();
 
-        // 2. Iterate using shorts for rows and columns
-        for (short row = 0; row < 5; row++)
-        {
-            for (short col = 0; col < 5; col++)
-            {
-                cardNumbers.Add(new CardNumber
-                {
-                    CardId = card.CardId,
-                    PositionRow = row,
-                    PositionCol = col,
-                    Number = (short)matrix[row][col],
-                    IsMarked = (row == 2 && col == 2)
-                });
-            }
-        }
-
-        // 3. Bulk insert all card numbers
-        await _context.CardNumbers.AddRangeAsync(cardNumbers);
-        await _context.SaveChangesAsync();
-        
-        // Reload card with numbers
-        // card.Numbers = cardNumbers; 
-        
         return card;
     }
 
-    public async Task<bool> MarkNumberOnCardAsync(long cardId, int number)
-    {
-        var cardNumber = await _context.CardNumbers
-            .FirstOrDefaultAsync(cn => cn.CardId == cardId && cn.Number == number);
-
-        if (cardNumber == null) return false;
-
-        cardNumber.IsMarked = true;
-        await _context.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<List<short>> GetCalledNumbersAsync(long roomId)
+    public async Task<List<int>> GetCalledNumbersAsync(long roomId)
     {
         return await _context.CalledNumbers
             .Where(cn => cn.RoomId == roomId)
             .OrderBy(cn => cn.CalledAt)
-            .Select(cn => cn.Number)
+            .Select(cn => (int)cn.Number)
             .ToListAsync();
     }
 
-    public async Task AddCalledNumberAsync(long roomId, short number)
+    public async Task AddCalledNumberAsync(long roomId, int number)
     {
         await _context.CalledNumbers.AddAsync(new CalledNumber
         {
@@ -113,14 +91,6 @@ public class BingoRepository : IBingoRepository
             Number = number,
             CalledAt = DateTime.UtcNow
         });
-
-        // HIGH PERFORMANCE UPDATE: 
-        // Automatically marks this number for ALL cards in this room 
-        // This prevents needing to iterate through 50+ players/cards in code.
-        await _context.Database.ExecuteSqlRawAsync(
-            "UPDATE card_numbers SET is_marked = true WHERE number = {0} AND card_id IN (SELECT card_id FROM cards WHERE room_id = {1})",
-            number, roomId);
-
         await _context.SaveChangesAsync();
     }
 
@@ -138,33 +108,39 @@ public class BingoRepository : IBingoRepository
 
     public async Task<bool> VerifyWinAsync(long cardId, WinPatternEnum pattern)
     {
-        var numbers = await _context.CardNumbers
-            .Where(cn => cn.CardId == cardId)
-            .ToListAsync();
+        var card = await _context.Cards
+            .Include(c => c.MasterCard)
+                .ThenInclude(m => m.Numbers)
+            .FirstOrDefaultAsync(c => c.CardId == cardId);
+
+        if (card == null) return false;
+
+        var calledList = await GetCalledNumbersAsync(card.RoomId);
+        var calledSet = calledList.ToHashSet();
 
         var grid = new bool[5, 5];
-        foreach (var n in numbers) 
+        foreach (var n in card.MasterCard.Numbers)
         {
-            // PositionRow is 1-based or 0-based?
-            // CardGenerator used 1-based (row + 1).
-            // CardNumber.cs says 1-5.
-            // Repositories usually assume DB state. 
-            // If DB is 1-based using smallint.
-            // Array is 0-based.
-            // Let's adjust.
-            if(n.PositionRow >= 1 && n.PositionRow <=5 && n.PositionCol >= 1 && n.PositionCol <= 5)
-            {
-                 grid[n.PositionRow - 1, n.PositionCol - 1] = n.IsMarked;
-            }
+            // Center cell (Number is null) is always true, others check calledSet
+            bool isMarked = n.Number == null || calledSet.Contains(n.Number.Value);
+            grid[n.PositionRow - 1, n.PositionCol - 1] = isMarked;
         }
 
         return pattern switch
         {
-            WinPatternEnum.FullHouse => numbers.All(n => n.IsMarked),
+            WinPatternEnum.FullHouse => CheckFullHouse(grid),
             WinPatternEnum.Line => CheckLines(grid),
-            WinPatternEnum.Blackout => numbers.All(n => n.IsMarked), // Same as fullhouse for now
+            WinPatternEnum.Blackout => CheckFullHouse(grid),
             _ => false
         };
+    }
+
+    private bool CheckFullHouse(bool[,] grid)
+    {
+        for (int r = 0; r < 5; r++)
+            for (int c = 0; c < 5; c++)
+                if (!grid[r, c]) return false;
+        return true;
     }
 
     private bool CheckLines(bool[,] grid)
@@ -179,17 +155,14 @@ public class BingoRepository : IBingoRepository
             }
             if (rowWin || colWin) return true;
         }
-        
-        // Diagonals?
+
         bool d1 = true, d2 = true;
-        for(int i=0; i<5; i++)
+        for (int i = 0; i < 5; i++)
         {
-            if(!grid[i,i]) d1 = false;
-            if(!grid[i, 4-i]) d2 = false;
+            if (!grid[i, i]) d1 = false;
+            if (!grid[i, 4 - i]) d2 = false;
         }
-        if (d1 || d2) return true;
-        
-        return false;
+        return d1 || d2;
     }
 
     public async Task RecordWinAsync(Win win)
@@ -205,7 +178,21 @@ public class BingoRepository : IBingoRepository
             .Include(u => u.RoomParticipations)
             .FirstOrDefaultAsync(u => u.UserId == userId);
     }
+    public async Task<Room> GetAvailableRoom(CancellationToken ct)
+    {
+        var roomQuery = await GetQueryAsync<Room>(r => r.Status == RoomStatusEnum.Waiting);
+        var room = await roomQuery.OrderBy(r => r.CreatedAt).FirstOrDefaultAsync(ct);
+        return room;
 
+    }
+    public async Task<List<long>> GetTakenCards(long roomId, CancellationToken ct)
+    {
+        var cardQuery = await GetQueryAsync<Card>(c => c.RoomId == roomId);
+        var takenCardIds = await cardQuery.Select(c => c.MasterCardId).ToListAsync(ct);
+        return takenCardIds;
+
+
+    }
     /* ============================================================
      * Generic DB Operations
      * ============================================================ */
@@ -214,36 +201,25 @@ public class BingoRepository : IBingoRepository
 
     public async Task<IQueryable<TEntity>> GetQueryAsync<TEntity>(Expression<Func<TEntity, bool>> predicate, bool forUpdate = false) where TEntity : class
     {
-        var query = await GetQueryAsync<TEntity>(forUpdate);
+        var query = forUpdate ? _context.Set<TEntity>() : _context.Set<TEntity>().AsNoTracking();
         return query.Where(predicate);
     }
 
     public async Task<IQueryable<TEntity>> GetQueryAsync<TEntity>(bool forUpdate = false) where TEntity : class
     {
-        return forUpdate
-            ? _context.Set<TEntity>()
-            : _context.Set<TEntity>().AsNoTracking();
+        return forUpdate ? _context.Set<TEntity>() : _context.Set<TEntity>().AsNoTracking();
     }
 
-    public async Task AddAsync<TEntity>(TEntity entity) where TEntity : class
-    {
-        await _context.Set<TEntity>().AddAsync(entity);
-    }
+    public async Task AddAsync<TEntity>(TEntity entity) where TEntity : class => await _context.Set<TEntity>().AddAsync(entity);
 
-    public async Task<int> CountAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class
-    {
-        return await _context.Set<TEntity>().CountAsync(criteria);
-    }
+    public async Task<int> CountAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class => await _context.Set<TEntity>().CountAsync(criteria);
 
-    public async Task<int> CountAsync<TEntity>() where TEntity : class
-    {
-        return await _context.Set<TEntity>().CountAsync();
-    }
+    public async Task<int> CountAsync<TEntity>() where TEntity : class => await _context.Set<TEntity>().CountAsync();
 
     public async Task DeleteAsync<TEntity>(TEntity entity) where TEntity : class
     {
         _context.Set<TEntity>().Remove(entity);
-        await Task.CompletedTask; // Remove is not async
+        await Task.CompletedTask;
     }
 
     public async Task DeleteAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class

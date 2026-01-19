@@ -13,21 +13,14 @@ public class BingoDbContext : DbContext
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<RoomPlayer> RoomPlayers => Set<RoomPlayer>();
     public DbSet<Card> Cards => Set<Card>();
-    public DbSet<CardNumber> CardNumbers => Set<CardNumber>();
     public DbSet<CalledNumber> CalledNumbers => Set<CalledNumber>();
     public DbSet<Win> Wins => Set<Win>();
-    public DbSet<RoomChat> RoomChats => Set<RoomChat>();
+    public DbSet<MasterCard> MasterCards => Set<MasterCard>();
+    public DbSet<MasterCardNumber> MasterCardNumbers => Set<MasterCardNumber>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
-        /* ============================================================
-         * PostgreSQL Enums
-         * ============================================================ */
-        modelBuilder.HasPostgresEnum<RoomStatusEnum>();
-        modelBuilder.HasPostgresEnum<WinPatternEnum>();
-        modelBuilder.HasPostgresEnum<WinTypeEnum>();
 
         /* ============================================================
          * Users
@@ -40,7 +33,7 @@ public class BingoDbContext : DbContext
 
             entity.Property(e => e.UserId)
                 .HasColumnName("user_id")
-                .UseIdentityAlwaysColumn();
+                .ValueGeneratedNever();
 
             entity.Property(e => e.Username)
                 .HasColumnName("username")
@@ -104,8 +97,10 @@ public class BingoDbContext : DbContext
                 .HasColumnName("host_user_id")
                 .IsRequired();
 
+            // ENUM CONVERTED TO INT
             entity.Property(e => e.Status)
                 .HasColumnName("status")
+                .HasConversion<int>()
                 .HasDefaultValue(RoomStatusEnum.Waiting);
 
             entity.Property(e => e.MaxPlayers)
@@ -117,8 +112,10 @@ public class BingoDbContext : DbContext
                 .HasPrecision(8, 2)
                 .HasDefaultValue(0);
 
+            // ENUM CONVERTED TO INT
             entity.Property(e => e.Pattern)
                 .HasColumnName("pattern")
+                .HasConversion<int>()
                 .HasDefaultValue(WinPatternEnum.Line);
 
             entity.Property(e => e.CreatedAt)
@@ -131,8 +128,8 @@ public class BingoDbContext : DbContext
             entity.Property(e => e.EndedAt)
                 .HasColumnName("ended_at");
 
-            entity.HasOne<User>()
-                .WithMany()
+            entity.HasOne(e => e.Host)
+                .WithMany(u => u.HostedRooms)
                 .HasForeignKey(e => e.HostUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
@@ -168,19 +165,68 @@ public class BingoDbContext : DbContext
 
             entity.HasIndex(e => new { e.RoomId, e.UserId }).IsUnique();
 
-            entity.HasOne<Room>()
-                .WithMany()
+            entity.HasOne(e => e.Room)
+                .WithMany(r => r.Players)
                 .HasForeignKey(e => e.RoomId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne<User>()
-                .WithMany()
+            entity.HasOne(e => e.User)
+                .WithMany(u => u.RoomParticipations)
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
         /* ============================================================
-         * Cards
+ * Master Cards
+ * ============================================================ */
+        modelBuilder.Entity<MasterCard>(entity =>
+        {
+            entity.ToTable("master_cards");
+            entity.HasKey(e => e.MasterCardId);
+
+            // Manual IDs (1-100)
+            entity.Property(e => e.MasterCardId)
+                .HasColumnName("master_card_id")
+                .ValueGeneratedNever();
+        });
+
+        /* ============================================================
+         * Master Card Numbers
+         * ============================================================ */
+        modelBuilder.Entity<MasterCardNumber>(entity =>
+        {
+            entity.ToTable("master_card_numbers");
+            entity.HasKey(e => e.MasterCardNumberId);
+
+            entity.Property(e => e.MasterCardNumberId)
+                .HasColumnName("master_card_number_id")
+                .UseIdentityAlwaysColumn();
+
+            entity.Property(e => e.MasterCardId)
+                .HasColumnName("master_card_id")
+                .IsRequired();
+
+            // ADD THESE TWO LINES:
+            entity.Property(e => e.PositionRow)
+                .HasColumnName("position_row")
+                .IsRequired();
+
+            entity.Property(e => e.PositionCol)
+                .HasColumnName("position_col")
+                .IsRequired();
+
+            entity.Property(e => e.Number)
+                .HasColumnName("number")
+                .IsRequired(false);
+
+            entity.HasOne(e => e.MasterCard)
+                .WithMany(m => m.Numbers)
+                .HasForeignKey(e => e.MasterCardId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        /* ============================================================
+         * Cards (Player's Active Selection for a Room)
          * ============================================================ */
         modelBuilder.Entity<Card>(entity =>
         {
@@ -200,61 +246,31 @@ public class BingoDbContext : DbContext
                 .HasColumnName("user_id")
                 .IsRequired();
 
+            entity.Property(e => e.MasterCardId)
+                .HasColumnName("master_card_id")
+                .IsRequired();
+
             entity.Property(e => e.PurchasedAt)
                 .HasColumnName("purchased_at")
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-            entity.HasOne<Room>()
-                .WithMany()
+            entity.HasIndex(e => new { e.RoomId, e.UserId, e.MasterCardId })
+                .IsUnique();
+
+            entity.HasOne(e => e.Room)
+                .WithMany(r => r.Cards)
                 .HasForeignKey(e => e.RoomId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne<User>()
+            entity.HasOne(e => e.User)
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-        });
 
-        /* ============================================================
-         * Card Numbers
-         * ============================================================ */
-        modelBuilder.Entity<CardNumber>(entity =>
-        {
-            entity.ToTable("card_numbers");
-
-            entity.HasKey(e => e.CardNumberId);
-
-            entity.Property(e => e.CardNumberId)
-                .HasColumnName("card_number_id")
-                .UseIdentityAlwaysColumn();
-
-            entity.Property(e => e.CardId)
-                .HasColumnName("card_id")
-                .IsRequired();
-
-            entity.Property(e => e.PositionRow)
-                .HasColumnName("position_row")
-                .IsRequired();
-
-            entity.Property(e => e.PositionCol)
-                .HasColumnName("position_col")
-                .IsRequired();
-
-            entity.Property(e => e.Number)
-                .HasColumnName("number")
-                .IsRequired();
-
-            entity.Property(e => e.IsMarked)
-                .HasColumnName("is_marked")
-                .HasDefaultValue(false);
-
-            entity.HasIndex(e => new { e.CardId, e.PositionRow, e.PositionCol })
-                .IsUnique();
-
-            entity.HasOne<Card>()
+            entity.HasOne(e => e.MasterCard)
                 .WithMany()
-                .HasForeignKey(e => e.CardId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasForeignKey(e => e.MasterCardId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         /* ============================================================
@@ -284,8 +300,8 @@ public class BingoDbContext : DbContext
 
             entity.HasIndex(e => new { e.RoomId, e.Number }).IsUnique();
 
-            entity.HasOne<Room>()
-                .WithMany()
+            entity.HasOne(e => e.Room)
+                .WithMany(r => r.CalledNumbers)
                 .HasForeignKey(e => e.RoomId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
@@ -331,46 +347,17 @@ public class BingoDbContext : DbContext
                 .HasPrecision(10, 2)
                 .HasDefaultValue(0);
 
+            // ENUM CONVERTED TO INT
             entity.Property(e => e.WinType)
                 .HasColumnName("win_type")
+                .HasConversion<int>()
                 .HasDefaultValue(WinTypeEnum.Line);
 
-            entity.HasOne<Room>().WithMany().HasForeignKey(e => e.RoomId);
-            entity.HasOne<Card>().WithMany().HasForeignKey(e => e.CardId);
-            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId);
+            entity.HasOne(e => e.Room).WithMany().HasForeignKey(e => e.RoomId);
+            entity.HasOne(e => e.Card).WithMany().HasForeignKey(e => e.CardId);
+            entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId);
         });
 
-        /* ============================================================
-         * Room Chat
-         * ============================================================ */
-        modelBuilder.Entity<RoomChat>(entity =>
-        {
-            entity.ToTable("room_chat");
-
-            entity.HasKey(e => e.MessageId);
-
-            entity.Property(e => e.MessageId)
-                .HasColumnName("message_id")
-                .UseIdentityAlwaysColumn();
-
-            entity.Property(e => e.RoomId)
-                .HasColumnName("room_id")
-                .IsRequired();
-
-            entity.Property(e => e.UserId)
-                .HasColumnName("user_id")
-                .IsRequired();
-
-            entity.Property(e => e.Message)
-                .HasColumnName("message")
-                .IsRequired();
-
-            entity.Property(e => e.SentAt)
-                .HasColumnName("sent_at")
-                .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-            entity.HasOne<Room>().WithMany().HasForeignKey(e => e.RoomId);
-            entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId);
-        });
+       
     }
 }

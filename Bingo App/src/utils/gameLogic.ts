@@ -1,68 +1,47 @@
-import type { CardNumber } from '../services/api';
-
-export type BingoCell = {
-    value: number | 'FREE';
-    marked: boolean;
-    id: string;
-};
-
-export type BingoBoard = BingoCell[][];
-
-/**
- * Converts the flat array of CardNumbers from the backend 
- * into a 5x5 grid for the UI.
- */
-export const formatBackendCard = (backendNumbers: CardNumber[]): BingoBoard => {
-    // Create empty 5x5 grid
+export const formatBackendCard = (backendNumbers: any[]): BingoBoard => {
     const grid: BingoBoard = Array(5).fill(null).map(() => Array(5).fill(null));
 
-    backendNumbers.forEach(n => {
-        // Backend uses 1-5, JS uses 0-4
-        const r = n.positionRow - 1;
-        const c = n.positionCol - 1;
+    backendNumbers.forEach((num) => {
+        const r = num.positionRow - 1;
+        const c = num.positionCol - 1;
 
-        grid[r][c] = {
-            value: n.number === 0 ? 'FREE' : n.number,
-            marked: n.isMarked || n.number === 0,
-            id: `${n.positionRow}-${n.positionCol}`
-        };
+        if (r >= 0 && r < 5 && c >= 0 && c < 5) {
+            // Check if number is null (Center Square)
+            const isCenter = num.number === null;
+            
+            grid[r][c] = {
+                id: isCenter ? `free-${r}-${c}` : `${num.number}-${r}-${c}`,
+                value: isCenter ? '★' : num.number,
+                // Center is ALWAYS marked. Otherwise use the synced state.
+                marked: isCenter ? true : (num.isMarked ?? false) 
+            };
+        }
     });
 
     return grid;
 };
 
-/**
- * Standard Bingo Win Logic (Rows, Columns, Diagonals)
- */
 export const checkWin = (board: BingoBoard): boolean => {
-    if (!board || board.length === 0) return false;
-    const size = 5;
-
-    // Check rows
-    for (let r = 0; r < size; r++) {
-        if (board[r].every(cell => cell.marked)) return true;
+    // 1. Check Rows
+    for (let r = 0; r < 5; r++) {
+        if (board[r].every(cell => cell && cell.marked)) return true;
+    }
+    
+    // 2. Check Columns
+    for (let c = 0; c < 5; c++) {
+        let colWin = true;
+        for (let r = 0; r < 5; r++) {
+            if (!board[r][c] || !board[r][c].marked) {
+                colWin = false;
+                break;
+            }
+        }
+        if (colWin) return true;
     }
 
-    // Check columns
-    for (let c = 0; c < size; c++) {
-        if (board.every(row => row[c].marked)) return true;
-    }
+    // 3. Check Diagonals
+    const d1 = [0, 1, 2, 3, 4].every(i => board[i][i] && board[i][i].marked);
+    const d2 = [0, 1, 2, 3, 4].every(i => board[i][4 - i] && board[i][4 - i].marked);
 
-    // Check diagonals
-    if (board.every((row, i) => row[i].marked)) return true;
-    if (board.every((row, i) => row[size - 1 - i].marked)) return true;
-
-    return false;
-};
-
-/**
- * Returns B, I, N, G, or O based on the number
- */
-export const getBingoLetter = (num: number | null): string => {
-    if (!num || num === 0) return '';
-    if (num <= 15) return 'B';
-    if (num <= 30) return 'I';
-    if (num <= 45) return 'N';
-    if (num <= 60) return 'G';
-    return 'O';
+    return d1 || d2;
 };

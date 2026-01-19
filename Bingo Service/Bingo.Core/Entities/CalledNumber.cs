@@ -10,7 +10,7 @@ namespace Bingo.Core.Entities
     {
         public long CalledId { get; set; }
         public long RoomId { get; set; }
-        public short Number { get; set; }
+        public int Number { get; set; }
         public DateTime CalledAt { get; set; }
 
         public Room Room { get; set; } = null!;

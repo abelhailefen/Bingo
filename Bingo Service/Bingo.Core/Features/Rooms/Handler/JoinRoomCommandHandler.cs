@@ -1,72 +1,68 @@
-using MediatR;
-using Bingo.Core.Features.Rooms.Contract.Command;
+/*using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities;
+using Bingo.Core.Entities.Enums;
+using Bingo.Core.Features.Rooms.Contract.Command;
+using Bingo.Core.Features.Rooms.DTOs;
 using Bingo.Core.Models;
-using Bingo.Core.Contract.Repository;
 using Bingo.Core.Services;
+using MediatR;
+using System.Security.Cryptography;
 
-namespace Bingo.Core.Features.Rooms.Handler;
-
-public class JoinRoomCommandHandler : IRequestHandler<JoinRoomCommand, Response<string>>
+namespace Bingo.Core.Features.Rooms.Handler
 {
-    private readonly IBingoRepository _repository;
 
-    public JoinRoomCommandHandler(IBingoRepository repository)
+    public class JoinRoomCommandHandler : IRequestHandler<JoinRoomCommand, Response<JoinLobbyResponse>>
     {
-        _repository = repository;
+        private readonly IBingoRepository _repo;
+
+        public JoinRoomCommandHandler(IBingoRepository repository)
+        {
+            _repo = repository;
+        }
+
+        public async Task<Response<JoinLobbyResponse>> Handle(JoinRoomCommand request, CancellationToken ct)
+        {
+            // 1. Find a room that is Waiting and not full (MaxPlayers default 100)
+            var room = await _repo.FindOneAsync<Room>(r =>
+                r.Status == RoomStatusEnum.Waiting &&
+                r.Players.Count < r.MaxPlayers);
+
+            if (room == null)
+            {
+                // 2. No room found? Create one automatically
+                room = new Room
+                {
+                    Name = $"Quick Game {DateTime.UtcNow.Ticks}",
+                    RoomCode = GenerateRandomCode(),
+                    Status = RoomStatusEnum.Waiting,
+                    HostUserId = request.UserId // First person is technically the "host"
+                };
+                await _repo.AddAsync(room);
+                await _repo.SaveChanges();
+            }
+            JoinLobbyResponse response = new JoinLobbyResponse
+            {
+                RooomId = room.RoomId
+            };
+
+            return Response<JoinLobbyResponse>.Success(response);
+        }
+
+
+        public static string GenerateRandomCode(int length = 8)
+        {
+            const string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            var bytes = new byte[length];
+            var result = new char[length];
+
+            RandomNumberGenerator.Fill(bytes);
+
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = letters[bytes[i] % letters.Length];
+            }
+
+            return new string(result);
+        }
     }
-
-    public async Task<Response<string>> Handle(JoinRoomCommand request, CancellationToken cancellationToken)
-    {
-        var room = await _repository.GetActiveRoomWithPlayersAsync(request.RoomId);
-
-        if (room == null)
-        {
-            return Response<string>.NotFound("Room not found");
-        }
-
-        if (room.Players.Count >= room.MaxPlayers)
-        {
-            return Response<string>.Error("Room is full");
-        }
-        
-        // Check if already joined
-        if (room.Players.Any(p => p.UserId == request.UserId))
-        {
-             return Response<string>.Success("Already joined");
-        }
-
-        var player = new RoomPlayer
-        {
-            RoomId = request.RoomId,
-            UserId = request.UserId,
-            JoinedAt = DateTime.UtcNow,
-            IsReady = false
-        };
-
-        await _repository.AddAsync(player);
-
-        // Generate Card if Room is Free
-        if (room.CardPrice == 0)
-        {
-             // Use Custom Service but pass result to repo?
-             // Actually repo has CreateCardWithNumbersAsync helper now which takes a matrix.
-             // But existing CardGenerator service logic is static and returns a Card object.
-             // I'll stick to AddAsync for simplicity as Repository.AddAsync is generic.
-             // Wait, I need to ensure CardGenerator uses CardNumber entities.
-             // Yes it does.
-             
-             // BUT, CardGenerator.GenerateCard returns a Card with nested CardNumbers.
-             // If I do _repository.AddAsync(card), EF Core usually handles graph.
-             // IBingoRepository.AddAsync maps to _context.Set<T>().AddAsync().
-             // This is fine.
-             
-             var card = CardGenerator.GenerateCard(request.RoomId, request.UserId);
-             await _repository.AddAsync(card);
-        }
-
-        await _repository.SaveChanges();
-
-        return Response<string>.Success("Joined successfully");
-    }
-}
+}*/

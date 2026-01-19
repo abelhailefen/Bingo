@@ -12,7 +12,7 @@ public class RoomStateDto
 {
     public long RoomId { get; set; }
     public RoomStatusEnum Status { get; set; }
-    public List<short> CalledNumbers { get; set; } = new();
+    public List<int> CalledNumbers { get; set; } = new();
     public List<string> Players { get; set; } = new(); // Just names for lightweight state? Or count?
                                                        // Prompt says "including called_numbers, room_players, wins"
     public int PlayerCount { get; set; }
