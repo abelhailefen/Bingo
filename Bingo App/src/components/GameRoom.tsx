@@ -2,7 +2,7 @@
 import * as signalR from '@microsoft/signalr';
 import { getRoom, getMyCards, claimBingo } from '../services/api';
 
-export const GameRoom = ({ roomId, userId }: { roomId: number, userId: number }) => {
+export const GameRoom = ({ roomId, userId, onLeave: _onLeave }: { roomId: number, userId: number, onLeave: () => void }) => {
     const [cards, setCards] = useState<any[]>([]);
     const [drawnNumbers, setDrawnNumbers] = useState<number[]>([]);
     const [currentNumber, setCurrentNumber] = useState<{ letter: string, val: number } | null>(null);

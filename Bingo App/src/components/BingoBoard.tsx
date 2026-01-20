@@ -32,14 +32,16 @@ export const BingoBoard: React.FC<Props> = ({ board, onCellClick, gameActive }) 
             {/* Grid */}
             <div className="grid grid-cols-5 gap-3">
                 {board.map((row, rowIndex) =>
-                    row.map((cell, colIndex) => (
-                        <BingoCell
-                            key={cell.id}
-                            cell={cell}
-                            onClick={() => onCellClick(rowIndex, colIndex)}
-                            disabled={!gameActive}
-                        />
-                    ))
+                    row.map((cell, colIndex) => 
+                        cell ? (
+                            <BingoCell
+                                key={cell.id}
+                                cell={cell}
+                                onClick={() => onCellClick(rowIndex, colIndex)}
+                                disabled={!gameActive}
+                            />
+                        ) : null
+                    )
                 )}
             </div>
         </div>

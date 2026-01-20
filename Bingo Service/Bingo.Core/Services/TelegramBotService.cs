@@ -56,7 +56,7 @@ public class TelegramBotService : BackgroundService
         switch (command)
         {
             case "/start":
-                var webAppUrl = "https://bingo-beta-one.vercel.app/";
+                var webAppUrl = _config["TelegramBot:WebAppUrl"] ?? "http://localhost:7051";
 
                 var inlineKeyboard = new InlineKeyboardMarkup(new[]
                 {

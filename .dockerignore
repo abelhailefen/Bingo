@@ -1,0 +1,10 @@
+**/.bin/
+**/.obj/
+**/bin/
+**/obj/
+.git/
+.vs/
+.vscode/
+dist/
+node_modules/
+*.user

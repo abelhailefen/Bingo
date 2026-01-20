@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { ApiResponse } from '../types/api';
 import type { Room, RoomSummary } from '../types/room';
-import type { Card, MasterCard } from '../types/gameplay';
+import type { MasterCard } from '../types/gameplay';
 
 const api = axios.create({
     baseURL: '/api', // Use relative path if proxied, or full URL
@@ -15,7 +15,7 @@ api.interceptors.request.use((config) => {
 });
 
 // Auth
-export const telegramInit = async (initData: string): Promise<ApiResponse<{ token: string; user: any }>> => {
+export const telegramInit = async (initData: string): Promise<ApiResponse<string>> => {
     const response = await api.post('/auth/telegram-init', { initData });
     return response.data;
 };

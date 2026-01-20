@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  bingo-backend:
+    image: bingo-backend:1.0.1
+    build:
+      context: .
+      dockerfile: Bingo Service/Bingo.API/Dockerfile
+    container_name: bingo-backend
+    ports:
+      - "7050:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=host.docker.internal;Port=5432;Database=bingo;Username=postgres;Password=
+      - TelegramBot__Token=8510424881:AAG_zGpm33x7MWG7mnn03odYRRtAVg-NFvg
+      - TelegramBot__WebAppUrl=https://dxdoq-196-189-19-2.a.free.pinggy.link
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - bingo-network
+
+  bingo-frontend:
+    build:
+      context: Bingo App
+      dockerfile: Dockerfile
+    container_name: bingo-frontend
+    ports:
+      - "7051:80"
+    environment:
+      - API_URL=https://xeprq-196-189-19-2.a.free.pinggy.link
+    depends_on:
+      - bingo-backend
+    networks:
+      - bingo-network
+
+networks:
+  bingo-network:
+    driver: bridge

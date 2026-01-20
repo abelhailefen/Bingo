@@ -1,3 +1,19 @@
+export interface BingoCell {
+    id: string;
+    value: number | string;
+    marked: boolean;
+}
+
+export type BingoBoard = (BingoCell | null)[][];
+
+export const getBingoLetter = (num: number): string => {
+    if (num <= 15) return 'B';
+    if (num <= 30) return 'I';
+    if (num <= 45) return 'N';
+    if (num <= 60) return 'G';
+    return 'O';
+};
+
 export const formatBackendCard = (backendNumbers: any[]): BingoBoard => {
     const grid: BingoBoard = Array(5).fill(null).map(() => Array(5).fill(null));
 
@@ -31,7 +47,7 @@ export const checkWin = (board: BingoBoard): boolean => {
     for (let c = 0; c < 5; c++) {
         let colWin = true;
         for (let r = 0; r < 5; r++) {
-            if (!board[r][c] || !board[r][c].marked) {
+            if (!board[r]?.[c]?.marked) {
                 colWin = false;
                 break;
             }
@@ -40,8 +56,8 @@ export const checkWin = (board: BingoBoard): boolean => {
     }
 
     // 3. Check Diagonals
-    const d1 = [0, 1, 2, 3, 4].every(i => board[i][i] && board[i][i].marked);
-    const d2 = [0, 1, 2, 3, 4].every(i => board[i][4 - i] && board[i][4 - i].marked);
+    const d1 = [0, 1, 2, 3, 4].every(i => board[i]?.[i]?.marked);
+    const d2 = [0, 1, 2, 3, 4].every(i => board[i]?.[4 - i]?.marked);
 
     return d1 || d2;
 };

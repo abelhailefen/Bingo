@@ -25,8 +25,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-# Render environment setup
-ENV ASPNETCORE_URLS=http://+:10000
-EXPOSE 10000
+# ASP.NET Core will listen on port 8080 inside the container
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "Bingo.API.dll"]

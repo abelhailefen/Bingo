@@ -15,14 +15,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddBingoInfrastructure(builder.Configuration);
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(JoinLobbyCommand).Assembly));
 
-
+builder.Services.AddHostedService<TelegramBotService>();
 builder.Services.AddSignalR();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 // Program.cs
 builder.Services.AddCors(o => o.AddPolicy("AllowAll", p =>
-    p.WithOrigins("http://localhost:5173") // Standard Vite port
+    p.SetIsOriginAllowed(_ => true) // Allow any origin (Ngrok URLs change)
      .AllowAnyMethod()
      .AllowAnyHeader()
      .AllowCredentials()));
