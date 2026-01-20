@@ -15,6 +15,7 @@ public interface IBingoRepository
     Task<Card> PickMasterCardAsync(long userId, long roomId, int masterCardId);
     Task<MasterCard> GetMasterCard(long masterCardId, CancellationToken ct);
     Task<Room> GetAvailableRoom(CancellationToken ct);
+    Task<List<int>> GetTakenCardIdsAsync(long roomId);
     Task<List<long>> GetTakenCards(long roomId, CancellationToken ct);
     // Removed: MarkNumberOnCardAsync (Marking is now calculated on-the-fly)
 
@@ -39,4 +40,5 @@ public interface IBingoRepository
     Task AttachAsync<TEntity>(TEntity entity) where TEntity : class;
     Task<IEnumerable<TEntity>> FindAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class;
     Task<TEntity?> FindOneAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class;
+    Task UpdateAsync<TEntity>(TEntity entity) where TEntity : class;
 }

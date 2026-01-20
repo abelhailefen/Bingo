@@ -2,15 +2,28 @@
 import * as signalR from '@microsoft/signalr';
 import { getRoom, getMyCards, claimBingo } from '../services/api';
 
-export const GameRoom = ({ roomId, userId, onLeave: _onLeave }: { roomId: number, userId: number, onLeave: () => void }) => {
+export const GameRoom = ({ roomId, userId, onLeave }: { roomId: number, userId: number, onLeave: () => void }) => {
     const [cards, setCards] = useState<any[]>([]);
     const [drawnNumbers, setDrawnNumbers] = useState<number[]>([]);
     const [currentNumber, setCurrentNumber] = useState<{ letter: string, val: number } | null>(null);
     const connectionRef = useRef<signalR.HubConnection | null>(null);
 
+    // Helper to get letter (Solves TS6133 by using it in updateCurrentNumber)
+    const getCallLetter = (n: number) => {
+        if (n <= 15) return 'B';
+        if (n <= 30) return 'I';
+        if (n <= 45) return 'N';
+        if (n <= 60) return 'G';
+        return 'O';
+    };
+
+    const updateCurrentNumber = (num: number) => {
+        if (!num) return;
+        setCurrentNumber({ letter: getCallLetter(num), val: num });
+    };
+
     useEffect(() => {
         const initGame = async () => {
-            // 1. Fetch Initial State
             const roomRes = await getRoom(roomId);
             const cardRes = await getMyCards(roomId, userId);
 
@@ -21,7 +34,6 @@ export const GameRoom = ({ roomId, userId, onLeave: _onLeave }: { roomId: number
             }
             if (cardRes.data) setCards(cardRes.data);
 
-            // 2. Setup SignalR
             const connection = new signalR.HubConnectionBuilder()
                 .withUrl("/bingohub")
                 .withAutomaticReconnect()
@@ -30,7 +42,7 @@ export const GameRoom = ({ roomId, userId, onLeave: _onLeave }: { roomId: number
             connection.on("NewNumberCalled", (number: number) => {
                 setDrawnNumbers(prev => [...prev, number]);
                 updateCurrentNumber(number);
-                playPopSound(); // Optional: Add a sound effect
+                try { new Audio('/assets/pop.mp3').play(); } catch (e) { }
             });
 
             await connection.start();
@@ -42,22 +54,15 @@ export const GameRoom = ({ roomId, userId, onLeave: _onLeave }: { roomId: number
         return () => { connectionRef.current?.stop(); };
     }, [roomId, userId]);
 
-    const updateCurrentNumber = (num: number) => {
-        if (!num) return;
-        const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O';
-        setCurrentNumber({ letter, val: num });
-    };
     const formatBackendCard = (numbers: any[]) => {
-        // Initialize a 5x5 null grid
         const grid = Array(5).fill(null).map(() => Array(5).fill(null));
-
         numbers.forEach(n => {
-            // Subtract 1 because your DB positions are likely 1-indexed (1-5)
-            // and JS arrays are 0-indexed (0-4)
             grid[n.positionRow - 1][n.positionCol - 1] = n;
         });
         return grid;
     };
+
+    // Attached to button (Solves TS6133)
     const handleClaimBingo = async () => {
         const res = await claimBingo(roomId, userId);
         if (res.isFailed) alert(res.message);
@@ -65,120 +70,96 @@ export const GameRoom = ({ roomId, userId, onLeave: _onLeave }: { roomId: number
     };
 
     return (
-        <div className="flex h-screen w-full bg-slate-950 text-white overflow-hidden">
+        <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden font-sans">
+            {/* Header Stats Bar - Best Bingo Style */}
+            <div className="bg-indigo-900/50 p-2 grid grid-cols-5 text-center gap-1 text-[10px] uppercase font-bold border-b border-white/10">
+                <div className="flex flex-col"><span className="text-indigo-400 opacity-70">Game ID</span><span>{roomId}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span className="text-indigo-400 opacity-70">Derash</span><span>696</span></div>
+                <div className="flex flex-col border-l border-white/10"><span className="text-indigo-400 opacity-70">Players</span><span>84</span></div>
+                <div className="flex flex-col border-l border-white/10"><span className="text-indigo-400 opacity-70">Bet</span><span>10</span></div>
+                <div className="flex flex-col border-l border-white/10"><span className="text-indigo-400 opacity-70">Call</span><span>{drawnNumbers.length}</span></div>
+            </div>
 
-            {/* LEFT PANEL: 1-75 PROGRESS BOARD */}
-            <div className="w-64 bg-slate-900/50 border-r border-white/5 flex flex-col h-full overflow-hidden shrink-0">
-                {/* Headers */}
-                <div className="grid grid-cols-5 gap-1 p-2 bg-slate-900">
-                    {['B', 'I', 'N', 'G', 'O'].map(l => (
-                        <div key={l} className="text-center font-black text-indigo-400 text-lg">{l}</div>
-                    ))}
-                </div>
-
-                {/* Scrollable Numbers Area */}
-                <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                    <div className="grid grid-cols-5 gap-1">
-                        {/* 
-                We create a flat list of 75 numbers. 
-                The order is: Row 1 (1, 16, 31, 46, 61), Row 2 (2, 17, 32, 47, 62)... 
-            */}
-                        {Array.from({ length: 15 }).map((_, rowIdx) => {
-                            const rowNum = rowIdx + 1;
-                            return [0, 15, 30, 45, 60].map(offset => {
-                                const num = rowNum + offset;
+            <div className="flex flex-1 overflow-hidden">
+                {/* LEFT SIDEBAR: 1-75 Grid */}
+                <div className="w-40 bg-slate-900/40 border-r border-white/10 flex flex-col h-full shrink-0">
+                    <div className="grid grid-cols-5 p-1 text-center font-black text-indigo-400 border-b border-white/10 bg-slate-900/60">
+                        {['B', 'I', 'N', 'G', 'O'].map(l => <div key={l} className="text-xs">{l}</div>)}
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-1 grid grid-cols-5 gap-0.5 custom-scrollbar">
+                        {Array.from({ length: 15 }).map((_, rIdx) => (
+                            [0, 15, 30, 45, 60].map(offset => {
+                                const num = rIdx + 1 + offset;
                                 const isDrawn = drawnNumbers.includes(num);
-
                                 return (
-                                    <div
-                                        key={num}
-                                        className={`aspect-square flex items-center justify-center rounded text-[10px] font-bold transition-all duration-300 ${isDrawn
-                                                ? 'bg-green-500 text-white shadow-[0_0_10px_rgba(34,197,94,0.4)] scale-95'
-                                                : 'bg-slate-800 text-slate-600'
-                                            }`}
-                                    >
+                                    <div key={num} className={`aspect-square flex items-center justify-center rounded-sm text-[10px] font-bold transition-colors ${isDrawn ? 'bg-green-600 text-white shadow-[0_0_5px_rgba(22,163,74,0.5)]' : 'bg-slate-800/50 text-slate-500'
+                                        }`}>
                                         {num}
                                     </div>
                                 );
-                            });
-                        })}
+                            })
+                        ))}
+                    </div>
+                </div>
+
+                {/* MAIN GAMEPLAY AREA */}
+                <div className="flex-1 flex flex-col p-3 overflow-y-auto bg-slate-950/50">
+                    {/* Current Call Section - Pill Style */}
+                    <div className="flex items-center justify-between mb-4 bg-indigo-600/20 p-3 rounded-2xl border border-indigo-500/30">
+                        <span className="text-lg italic font-black text-white/90">playing</span>
+                        <div className="flex items-center gap-3">
+                            <span className="text-[10px] uppercase font-bold text-indigo-300">Current Call</span>
+                            <div className="w-16 h-16 bg-slate-900 rounded-full flex flex-col items-center justify-center border-4 border-indigo-500 shadow-2xl">
+                                <span className="text-[10px] font-black leading-none text-indigo-400">{currentNumber?.letter}</span>
+                                <span className="text-2xl font-black leading-none">{currentNumber?.val || '--'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Cards Stack */}
+                    <div className="space-y-6 pb-40">
+                        {cards.map((card) => (
+                            <div key={card.cardId} className="bg-[#fefce8] p-3 rounded-xl shadow-2xl relative overflow-hidden">
+                                <div className="grid grid-cols-5 text-center font-black text-lg mb-1">
+                                    <span className="text-orange-500">B</span><span className="text-green-600">I</span>
+                                    <span className="text-blue-600">N</span><span className="text-red-500">G</span>
+                                    <span className="text-purple-600">O</span>
+                                </div>
+                                <div className="grid grid-cols-5 gap-1">
+                                    {formatBackendCard(card.masterCard.numbers).map((row, rIdx) =>
+                                        row.map((cell: any, cIdx: number) => {
+                                            const isChecked = cell.number === null || drawnNumbers.includes(cell.number);
+                                            return (
+                                                <div key={`${rIdx}-${cIdx}`} className={`h-11 flex items-center justify-center rounded-md border border-black/5 text-lg font-black transition-all ${isChecked ? 'bg-green-500 text-white shadow-inner scale-[0.98]' : 'bg-white text-slate-800'
+                                                    }`}>
+                                                    {cell.number ?? '★'}
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                                <p className="text-center text-[10px] font-bold text-red-500/60 mt-2 uppercase tracking-tighter">Board No.{card.masterCardId}</p>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
 
-            {/* RIGHT PANEL: GAMEPLAY */}
-            <div className="flex-1 flex flex-col overflow-y-auto p-4 md:p-8 space-y-6">
+            {/* Sticky Bingo Button Container */}
+            <div className="absolute bottom-20 left-40 right-0 px-4 pointer-events-none">
+                <button
+                    onClick={handleClaimBingo}
+                    className="w-full pointer-events-auto bg-orange-500 hover:bg-orange-400 py-4 rounded-2xl font-black text-3xl text-white shadow-[0_6px_0_rgb(194,65,12)] active:translate-y-1 active:shadow-none transition-all"
+                >
+                    BINGO!
+                </button>
+            </div>
 
-                {/* Header Stats */}
-                <div className="grid grid-cols-3 gap-2 bg-black/30 p-4 rounded-2xl border border-white/10">
-                    <div className="text-center">
-                        <p className="text-[10px] uppercase text-indigo-300">Room ID</p>
-                        <p className="font-bold">{roomId}</p>
-                    </div>
-                    <div className="text-center border-x border-white/10">
-                        <p className="text-[10px] uppercase text-indigo-300">Players</p>
-                        <p className="font-bold">84</p>
-                    </div>
-                    <div className="text-center">
-                        <p className="text-[10px] uppercase text-indigo-300">Call</p>
-                        <p className="font-bold">{drawnNumbers.length}</p>
-                    </div>
-                </div>
-
-                {/* Current Call Display */}
-                <div className="flex items-center justify-between bg-indigo-600/40 p-6 rounded-3xl border-2 border-indigo-500/50">
-                    <h2 className="text-xl font-bold italic">playing...</h2>
-                    <div className="flex items-center gap-4">
-                        <span className="text-indigo-200 font-semibold">Current Call</span>
-                        <div className="w-20 h-20 bg-white rounded-full flex flex-col items-center justify-center shadow-2xl border-4 border-indigo-400">
-                            <span className="text-indigo-900 text-xs font-black leading-none">{currentNumber?.letter}</span>
-                            <span className="text-indigo-900 text-3xl font-black leading-none">{currentNumber?.val}</span>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Player Boards */}
-                <div className="flex flex-col gap-8 pb-24">
-                    {cards.map((card) => (
-                        <div key={card.cardId} className="bg-[#fefce8] p-3 rounded-xl shadow-2xl rotate-1">
-                            <div className="flex justify-between items-center mb-1 px-1">
-                                {['B', 'I', 'N', 'G', 'O'].map((l, i) => (
-                                    <span key={i} className={`w-10 text-center font-black text-lg ${l === 'B' ? 'text-orange-500' : l === 'I' ? 'text-green-600' : l === 'N' ? 'text-blue-600' : l === 'G' ? 'text-red-500' : 'text-purple-600'
-                                        }`}>{l}</span>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-5 gap-1">
-                                {formatBackendCard(card.masterCard.numbers).map((row, rIdx) =>
-                                    row.map((cell: any, cIdx: number) => {
-                                        const isDrawn = cell.number === null || drawnNumbers.includes(cell.number);
-                                        return (
-                                            <div key={`${rIdx}-${cIdx}`} className={`h-12 flex items-center justify-center rounded-lg border-2 border-black/5 text-lg font-black transition-all ${isDrawn ? 'bg-green-500 text-white' : 'bg-white text-slate-800'
-                                                }`}>
-                                                {cell.number ?? '★'}
-                                            </div>
-                                        );
-                                    })
-                                )}
-                            </div>
-                            <p className="text-center text-[10px] font-bold text-red-500 mt-2">Board No.{card.masterCardId}</p>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Footer Claim Button */}
-                <div className="fixed bottom-0 right-0 w-3/4 p-4 bg-indigo-900/80 backdrop-blur-md">
-                    <button
-                        onClick={handleClaimBingo}
-                        className="w-full bg-orange-500 hover:bg-orange-400 py-4 rounded-2xl font-black text-3xl shadow-[0_8px_0_rgb(194,65,12)] active:translate-y-1 active:shadow-none transition-all"
-                    >
-                        BINGO!
-                    </button>
-                </div>
+            {/* Bottom Nav Bar */}
+            <div className="p-3 grid grid-cols-2 gap-4 bg-slate-900 border-t border-white/10 z-10">
+                <button className="bg-blue-500 hover:bg-blue-400 py-2.5 rounded-full font-bold text-sm shadow-lg transition-colors">Refresh</button>
+                <button onClick={onLeave} className="bg-orange-500 hover:bg-orange-400 py-2.5 rounded-full font-bold text-sm shadow-lg transition-colors">Leave</button>
             </div>
         </div>
     );
-};
-
-const playPopSound = () => {
-    try { new Audio('/assets/pop.mp3').play(); } catch (e) { }
 };

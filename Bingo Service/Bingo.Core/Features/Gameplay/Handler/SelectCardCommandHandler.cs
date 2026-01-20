@@ -35,27 +35,26 @@ namespace Bingo.Core.Features.Gameplay.Handler
 
                 if (isTaken) return Response<bool>.Error("Card already taken.");
 
-                // 2. Check if user already has 2 cards
+                // 2. Check Limit (Max 2)
                 var userCardCount = await _repository.CountAsync<Card>(c =>
                     c.RoomId == request.RoomId && c.UserId == request.UserId);
-
                 if (userCardCount >= 2) return Response<bool>.Error("Max 2 cards allowed.");
 
-                // 3. Persist the selection
                 await _repository.PickMasterCardAsync(request.UserId, request.RoomId, request.MasterCardId);
             }
             else
             {
-                // Unselect: Remove the card record
+                // UNSELECT LOGIC
                 await _repository.DeleteAsync<Card>(c =>
-                    c.RoomId == request.RoomId && c.UserId == request.UserId && c.MasterCardId == request.MasterCardId);
+                    c.RoomId == request.RoomId &&
+                    c.UserId == request.UserId &&
+                    c.MasterCardId == request.MasterCardId);
                 await _repository.SaveChanges();
             }
 
-            // 4. Notify everyone in the room via SignalR
-            // We broadcast: RoomId, MasterCardId, IsLocked (IsSelecting), and who did it
+            // BROADCAST TO ALL
             await _hubContext.Clients.Group(request.RoomId.ToString())
-                .CardSelectionChanged(request.MasterCardId, request.IsSelecting, (int)request.UserId);
+                .CardSelectionChanged(request.MasterCardId, request.IsSelecting, request.UserId);
 
             return Response<bool>.Success(true);
         }

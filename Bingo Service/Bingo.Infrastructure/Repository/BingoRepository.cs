@@ -192,6 +192,13 @@ public class BingoRepository : IBingoRepository
 
 
     }
+    public async Task<List<int>> GetTakenCardIdsAsync(long roomId)
+    {
+        return await _context.Cards
+            .Where(c => c.RoomId == roomId)
+            .Select(c => (int)c.MasterCardId)
+            .ToListAsync();
+    }
     /* ============================================================
      * Generic DB Operations
      * ============================================================ */
@@ -242,5 +249,24 @@ public class BingoRepository : IBingoRepository
     public async Task<TEntity?> FindOneAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class
     {
         return await _context.Set<TEntity>().FirstOrDefaultAsync(criteria);
+    }
+    public async Task UpdateAsync<TEntity>(TEntity entity) where TEntity : class
+    {
+
+        var keyName = _context.Model.FindEntityType(typeof(TEntity)).FindPrimaryKey().Properties
+            .Select(x => x.Name).Single();
+        var keyValue = entity.GetType().GetProperty(keyName).GetValue(entity, null);
+
+        var attachedObject = _context.ChangeTracker
+            .Entries<TEntity>().FirstOrDefault(x => x.Metadata.FindPrimaryKey().Properties.First(y => y.Name == keyName) == keyValue);
+        if (attachedObject != null)
+        {
+            attachedObject.State = EntityState.Detached;
+        }
+
+        //DbContext.Entry(entity).Property("UpdatedOn").OriginalValue = DbContext.Entry(entity).Property("UpdatedOn").CurrentValue;
+        //DbContext.Entry(entity).Property("UpdatedOn").CurrentValue = DateTime.Now;
+        _context.Entry(entity).State = EntityState.Modified;
+        _context.Set<TEntity>().Update(entity);
     }
 }

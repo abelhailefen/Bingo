@@ -54,8 +54,20 @@ export const joinAutoLobby = async (userId: number): Promise<ApiResponse<{ roomI
 };
 
 // SignalR: Notify others that I am previewing/locking a card
-export const selectCardLock = async (roomId: number, masterCardId: number, isLocked: boolean): Promise<ApiResponse<void>> => {
-    const response = await api.post(`/rooms/${roomId}/select-card`, { masterCardId, isLocked });
+// src/services/api.ts
+
+export const selectCardLock = async (
+    roomId: number,
+    masterCardId: number,
+    isLocked: boolean,
+    userId: number // <--- ADD THIS
+): Promise<ApiResponse<boolean>> => {
+    // Send userId in the body
+    const response = await api.post(`/rooms/${roomId}/select-card`, {
+        masterCardId,
+        isLocked,
+        userId // <--- ADD THIS
+    });
     return response.data;
 };
 
@@ -76,4 +88,10 @@ export const claimBingo = async (roomId: number, userId: number): Promise<ApiRes
     const response = await api.post(`/rooms/${roomId}/claim`, { userId });
     return response.data;
 };
+
+export const getTakenCards = async (roomId: number): Promise<ApiResponse<number[]>> => {
+    const response = await api.get(`/rooms/${roomId}/taken-cards`);
+    return response.data;
+};
+
 export default api;

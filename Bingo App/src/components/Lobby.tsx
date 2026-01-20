@@ -1,59 +1,107 @@
 ﻿import { useEffect, useState, useRef } from 'react';
 import * as signalR from '@microsoft/signalr';
-import { joinAutoLobby, selectCardLock, getMasterCard } from '../services/api';
+import {
+    joinAutoLobby,
+    selectCardLock,
+    getMasterCard,
+    getTakenCards,
+    getMyCards
+} from '../services/api';
 import type { MasterCard } from '../types/gameplay';
 
 interface LobbyProps {
     userId: number;
-    onEnterGame: (roomId: number) => void;
+    onEnterGame: (id: number) => void;
 }
 
 export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
     const [roomId, setRoomId] = useState<number | null>(null);
-    const [lockedCards, setLockedCards] = useState<number[]>([]);
-    const [myCards, setMyCards] = useState<MasterCard[]>([]);
+    const [lockedCards, setLockedCards] = useState<number[]>([]); // All cards taken in the room
+    const [myCards, setMyCards] = useState<MasterCard[]>([]);     // Full card objects for the user
+    const [countdown, setCountdown] = useState(60);
     const connectionRef = useRef<signalR.HubConnection | null>(null);
 
-    // 1. Join Lobby on Mount
+    // Helpers to handle Casing variations from .NET API
+    const getCardId = (obj: any): number => {
+        if (!obj) return 0;
+        return obj.masterCardId ?? obj.MasterCardId ?? obj.master_card_id ?? 0;
+    };
+
+    const getNumbers = (obj: any): any[] => {
+        if (!obj) return [];
+        return obj.numbers ?? obj.Numbers ?? [];
+    };
+
+    // 1. Countdown Timer
+    useEffect(() => {
+        const timer = setInterval(() => setCountdown(p => p > 0 ? p - 1 : 60), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    // 2. Initialize Lobby and SignalR
     useEffect(() => {
         const initLobby = async () => {
             try {
                 const res = await joinAutoLobby(userId);
-                if (res && res.data) {
-                    setRoomId(res.data.roomId);
-                    connectSignalR(res.data.roomId);
+                if (res?.data) {
+                    const rId = res.data.roomId;
+                    setRoomId(rId);
+
+                    // Fetch initial room state
+                    const [takenRes, myCardsRes] = await Promise.all([
+                        getTakenCards(rId),
+                        getMyCards(rId, userId)
+                    ]);
+
+                    // Sync cards taken by everyone
+                    if (takenRes.data) {
+                        setLockedCards(takenRes.data.map(id => Number(id)));
+                    }
+
+                    // Sync cards belonging to ME (for preview)
+                    if (myCardsRes.data) {
+                        const existing = myCardsRes.data.map((c: any) => c.masterCard || c.MasterCard);
+                        setMyCards(existing.filter(Boolean));
+                    }
+
+                    connectSignalR(rId);
                 }
             } catch (err) {
-                console.error("Lobby Init Failed", err);
+                console.error("Lobby Init Error:", err);
             }
         };
-        if (userId) initLobby();
 
-        // Cleanup SignalR on unmount
+        initLobby();
+
         return () => {
             connectionRef.current?.stop();
         };
     }, [userId]);
 
-    // 2. SignalR Setup
     const connectSignalR = async (rId: number) => {
         const connection = new signalR.HubConnectionBuilder()
             .withUrl("/bingohub")
             .withAutomaticReconnect()
             .build();
 
-        // Listen for other players selecting/deselecting cards
         connection.on("CardSelectionChanged", (cardId: number, isLocked: boolean, senderId: number) => {
-            if (senderId === userId) return;
-            setLockedCards(prev => isLocked
-                ? [...new Set([...prev, cardId])]
-                : prev.filter(id => id !== cardId)
-            );
-        });
+            const cid = Number(cardId);
+            const isMe = senderId.toString() === userId.toString();
 
-        // Listen for system game start (Optional logic)
-        connection.on("GameStarted", (startedRoomId: number) => {
-            if (startedRoomId === rId) onEnterGame(startedRoomId);
+            setLockedCards(prev => {
+                if (isLocked) {
+                    // Card was just taken
+                    return [...new Set([...prev, cid])];
+                } else {
+                    // Card was just released
+                    return prev.filter(id => id !== cid);
+                }
+            });
+
+            // If I released a card from another source (e.g. another tab), update my preview list
+            if (isMe && !isLocked) {
+                setMyCards(prev => prev.filter(c => getCardId(c) !== cid));
+            }
         });
 
         try {
@@ -61,146 +109,160 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
             await connection.invoke("JoinRoomGroup", rId.toString());
             connectionRef.current = connection;
         } catch (err) {
-            console.error("SignalR Connection Error: ", err);
+            console.error("SignalR Connect Error:", err);
         }
     };
 
-    // 3. Toggle Card Selection (Select/Deselect)
+    // 3. Select / Deselect Logic
     const handleToggleCard = async (cardId: number) => {
         if (!roomId) return;
-        const existingCard = myCards.find(c => c.masterCardId === cardId);
+
+        const isAlreadyMine = myCards.some(c => getCardId(c) === cardId);
 
         try {
-            if (existingCard) {
-                // --- DESELECT LOGIC ---
-                const res = await selectCardLock(roomId, cardId, false);
-                if (res && !res.isFailed) {
-                    setMyCards(prev => prev.filter(c => c.masterCardId !== cardId));
-                }
-            } else {
-                // --- SELECT LOGIC ---
-                if (myCards.length >= 2) return; // UI safeguard
+            // If isAlreadyMine is true, we send IsLocked = false to deselect it
+            const res = await selectCardLock(roomId, cardId, !isAlreadyMine, userId);
 
-                const res = await selectCardLock(roomId, cardId, true);
-                if (res && !res.isFailed) {
-                    // Fetch full card data (B-I-N-G-O columns) to show in preview
+            if (res && !res.isFailed) {
+                if (!isAlreadyMine) {
+                    // SELECTING: Get the full card template to show in preview
                     const cardData = await getMasterCard(roomId, cardId);
                     if (cardData.data) {
                         setMyCards(prev => [...prev, cardData.data]);
+                        setLockedCards(prev => [...new Set([...prev, cardId])]);
                     }
                 } else {
-                    alert(res.message || "This card was just taken!");
+                    // DESELECTING: Remove from local state
+                    setMyCards(prev => prev.filter(c => getCardId(c) !== cardId));
+                    setLockedCards(prev => prev.filter(id => id !== cardId));
                 }
+            } else {
+                alert(res.message || "Action failed!");
             }
         } catch (err) {
-            console.error("Card selection toggle failed", err);
+            console.error("Toggle Error:", err);
         }
     };
 
-    return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
-            <div className="max-w-5xl mx-auto space-y-8">
+    const renderCardGrid = (numbers: any[]) => {
+        const grid = Array(5).fill(null).map(() => Array(5).fill(null));
+        numbers.forEach(n => {
+            const r = (n.positionRow ?? n.PositionRow) - 1;
+            const c = (n.positionCol ?? n.PositionCol) - 1;
+            const val = n.number !== undefined ? n.number : n.Number;
+            if (grid[r]) grid[r][c] = val;
+        });
 
-                {/* Header Info Panel */}
-                <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
-                    <div>
-                        <h1 className="text-2xl font-black tracking-tight text-white uppercase">Bingo Lobby</h1>
-                        <p className="text-slate-400 text-sm">Room ID: <span className="text-indigo-400 font-mono">#{roomId ?? '---'}</span></p>
+        return grid.map((row, rIdx) => (
+            <div key={rIdx} className="grid grid-cols-5 gap-0.5">
+                {row.map((num, cIdx) => (
+                    <div
+                        key={cIdx}
+                        className={`h-7 sm:h-8 flex items-center justify-center border border-black/5 text-[11px] font-bold rounded-sm ${num === null ? 'bg-green-500 text-white' : 'bg-white text-slate-800'}`}
+                    >
+                        {num ?? '★'}
                     </div>
-                    <div className="flex gap-6">
-                        <div className="text-center">
-                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Stake</p>
-                            <p className="text-xl font-bold text-orange-500">10.00</p>
-                        </div>
-                        <div className="text-center border-l border-slate-800 pl-6">
-                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Selected</p>
-                            <p className="text-xl font-bold text-indigo-400">{myCards.length} / 2</p>
-                        </div>
-                    </div>
+                ))}
+            </div>
+        ));
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-950 text-white flex flex-col font-sans">
+            {/* Header Stats */}
+            <div className="grid grid-cols-3 gap-3 px-4 py-6 bg-indigo-700/20">
+                <div className="bg-white rounded-2xl py-2 flex flex-col items-center justify-center text-slate-900 shadow-xl">
+                    <span className="text-[9px] font-black uppercase text-indigo-400">Room</span>
+                    <span className="text-xl font-black">{roomId ?? '...'}</span>
+                </div>
+                <div className="bg-white rounded-2xl py-2 flex flex-col items-center justify-center text-slate-900 shadow-xl">
+                    <span className="text-[9px] font-black uppercase text-indigo-400">Stake</span>
+                    <span className="text-xl font-black">10</span>
+                </div>
+                <div className="bg-white rounded-2xl py-2 flex flex-col items-center justify-center text-slate-900 shadow-xl">
+                    <span className="text-[9px] font-black uppercase text-indigo-400">Starts</span>
+                    <span className="text-sm font-black text-indigo-600">{countdown}s</span>
+                </div>
+            </div>
+
+            <div className="flex-1 p-4 overflow-y-auto">
+                {/* 1-100 Number Selection Grid */}
+                <div className="grid grid-cols-10 gap-1.5 max-w-xl mx-auto mb-8">
+                    {Array.from({ length: 100 }, (_, i) => i + 1).map(id => {
+                        const isMine = myCards.some(c => getCardId(c) === id);
+                        const isTakenByOther = lockedCards.includes(id) && !isMine;
+
+                        return (
+                            <button
+                                key={id}
+                                disabled={isTakenByOther}
+                                onClick={() => handleToggleCard(id)}
+                                className={`aspect-square flex items-center justify-center text-[11px] font-bold rounded transition-all 
+                                    ${isMine
+                                        ? 'bg-orange-500 text-white ring-2 ring-orange-400 scale-110 z-10 shadow-lg'
+                                        : isTakenByOther
+                                            ? 'bg-slate-800 text-slate-600 opacity-40 cursor-not-allowed'
+                                            : 'bg-indigo-500/30 text-white/90 hover:bg-indigo-500/50'}`}
+                            >
+                                {id}
+                            </button>
+                        );
+                    })}
                 </div>
 
-                {/* Card Preview Widgets */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {myCards.length === 0 && (
-                        <div className="col-span-full h-32 flex items-center justify-center border-2 border-dashed border-slate-800 rounded-2xl text-slate-600 italic">
-                            Select up to two cards from the grid below...
-                        </div>
-                    )}
-                    {myCards.map(card => (
-                        <div key={card.masterCardId} className="bg-slate-900 border border-indigo-500/30 rounded-2xl p-4 flex gap-4 shadow-2xl transition-all">
-                            <div className="flex-1">
-                                <p className="text-[10px] font-bold text-indigo-400 mb-2 uppercase tracking-tighter">Master Card #{card.masterCardId}</p>
-                                <div className="grid grid-cols-5 gap-1 bg-slate-950 p-2 rounded-lg border border-slate-800">
-                                    {card.numbers.map((n, i) => (
-                                        <div key={i} className={`aspect-square flex items-center justify-center text-[10px] font-bold rounded-sm border border-slate-800/30 ${n.number === null ? 'bg-orange-500 text-white shadow-[0_0_8px_rgba(249,115,22,0.4)]' : 'text-slate-300'}`}>
-                                            {n.number ?? '*'}
-                                        </div>
-                                    ))}
-                                </div>
+                {/* Selected Cards Preview Section */}
+                <div className="max-w-md mx-auto space-y-6 pb-24">
+                    <h3 className="text-center text-xs font-bold text-indigo-400 uppercase tracking-widest">
+                        Your Selected Boards ({myCards.length}/2)
+                    </h3>
+
+                    {myCards.map((card) => (
+                        <div key={getCardId(card)} className="relative bg-[#fefce8] p-3 rounded-xl shadow-2xl transform transition-all animate-in fade-in zoom-in duration-300">
+                            {/* Deselect X Button */}
+                            <button
+                                onClick={() => handleToggleCard(getCardId(card))}
+                                className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-20"
+                            >
+                                <span className="font-bold text-lg">×</span>
+                            </button>
+
+                            <div className="grid grid-cols-5 text-center font-black text-[12px] mb-2">
+                                <span className="text-orange-600">B</span><span className="text-green-600">I</span>
+                                <span className="text-blue-600">N</span><span className="text-red-600">G</span>
+                                <span className="text-purple-600">O</span>
                             </div>
-                            <div className="flex flex-col justify-end">
-                                <button
-                                    onClick={() => handleToggleCard(card.masterCardId)}
-                                    className="bg-red-500/10 hover:bg-red-500/20 text-red-500 text-[10px] font-bold py-2 px-3 rounded-lg border border-red-500/20 transition-colors uppercase"
-                                >
-                                    Remove
-                                </button>
-                            </div>
+
+                            {renderCardGrid(getNumbers(card))}
+
+                            <p className="text-center text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-tighter">
+                                Board #{getCardId(card)}
+                            </p>
                         </div>
                     ))}
+
+                    {myCards.length === 0 && (
+                        <div className="text-center py-10 border-2 border-dashed border-slate-800 rounded-2xl">
+                            <p className="text-slate-500 italic text-sm">Select up to 2 cards from the grid above to join the game</p>
+                        </div>
+                    )}
                 </div>
+            </div>
 
-                {/* 1-100 Selection Grid */}
-                <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800 shadow-2xl">
-                    <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
-                        {Array.from({ length: 100 }, (_, i) => i + 1).map(id => {
-                            const isLocked = lockedCards.includes(id);
-                            const isMe = myCards.some(c => c.masterCardId === id);
-
-                            let btnClasses = "h-12 rounded-xl font-black text-sm transition-all duration-200 shadow-sm ";
-
-                            if (isMe) {
-                                btnClasses += "bg-orange-500 text-white ring-4 ring-orange-500/30 scale-110 z-10 shadow-lg shadow-orange-500/20";
-                            } else if (isLocked) {
-                                btnClasses += "bg-slate-800 text-slate-600 opacity-30 cursor-not-allowed";
-                            } else {
-                                btnClasses += "bg-indigo-600 hover:bg-indigo-500 text-white hover:scale-105 active:scale-95";
-                            }
-
-                            return (
-                                <button
-                                    key={id}
-                                    disabled={isLocked && !isMe}
-                                    onClick={() => handleToggleCard(id)}
-                                    className={btnClasses}
-                                >
-                                    {id}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* Footer Navigation Actions */}
-                <div className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-lg">
-                    <button className="px-8 py-3 rounded-xl font-bold text-slate-400 hover:bg-slate-800 transition-colors uppercase text-sm tracking-widest">
-                        Back
-                    </button>
-                    <button
-                        disabled={myCards.length === 0}
-                        onClick={() => roomId && onEnterGame(roomId)}
-                        className={`px-12 py-3 rounded-xl font-black transition-all shadow-xl uppercase tracking-widest ${myCards.length > 0
-                                ? 'bg-indigo-500 hover:bg-indigo-400 text-white cursor-pointer hover:-translate-y-0.5'
-                                : 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                            }`}
-                    >
-                        Enter Game
-                    </button>
-                </div>
-
-                <p className="text-center text-[10px] text-slate-600 font-mono tracking-tighter uppercase">
-                    Best Bingo Engine &copy; 2024 - All Rights Reserved
-                </p>
+            {/* Fixed Footer */}
+            <div className="fixed bottom-0 left-0 right-0 p-4 grid grid-cols-2 gap-4 bg-slate-900/90 backdrop-blur-md border-t border-white/10 z-30">
+                <button className="bg-slate-800 py-3 rounded-xl font-bold text-sm hover:bg-slate-700 transition-colors">
+                    BACK
+                </button>
+                <button
+                    onClick={() => roomId && onEnterGame(roomId)}
+                    disabled={myCards.length === 0}
+                    className={`py-3 rounded-xl font-bold text-sm transition-all ${myCards.length > 0
+                            ? 'bg-orange-500 hover:bg-orange-400 shadow-lg shadow-orange-500/20 text-white'
+                            : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                        }`}
+                >
+                    START GAME
+                </button>
             </div>
         </div>
     );
