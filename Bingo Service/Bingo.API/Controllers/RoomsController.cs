@@ -26,8 +26,13 @@ public class RoomsController : ControllerBase
         _mediator = mediator;
         _hubContext = hubContext;
     }
+    [HttpGet("{roomId}/users/{userId}/cards")]
+    public async Task<IActionResult> GetMyCards(long roomId, long userId)
+    {
+        var result = await _mediator.Send(new GetMyCardsQuery(roomId, userId));
+        return Ok(result);
+    }
 
-   
     [HttpGet("{roomId}/master-card/{masterCardId}")]
     public async Task<ActionResult<Response<MasterCardDto>>> GetMasterCard(long roomId, int masterCardId)
     {

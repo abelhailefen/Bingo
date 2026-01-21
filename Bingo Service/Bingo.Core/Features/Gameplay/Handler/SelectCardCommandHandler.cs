@@ -6,11 +6,6 @@ using Bingo.Core.Models;
 using MediatR;
 using Microsoft.AspNetCore.SignalR;
 using Bingo.Core.Hubs;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Bingo.Core.Features.Gameplay.Handler
 {
@@ -29,30 +24,47 @@ namespace Bingo.Core.Features.Gameplay.Handler
         {
             if (request.IsSelecting)
             {
-                // 1. Check if card is already taken by ANYONE
-                var isTaken = await _repository.CountAsync<Card>(c =>
-                    c.RoomId == request.RoomId && c.MasterCardId == request.MasterCardId) > 0;
+                // 1. Check if THIS specific user already has this card (Idempotency)
+                var alreadyMine = await _repository.CountAsync<Card>(c =>
+                    c.RoomId == request.RoomId &&
+                    c.UserId == request.UserId &&
+                    c.MasterCardId == request.MasterCardId) > 0;
 
-                if (isTaken) return Response<bool>.Error("Card already taken.");
+                // If I already own it, just return success so the UI stays in sync
+                if (alreadyMine) return Response<bool>.Success(true);
 
-                // 2. Check Limit (Max 2)
+                // 2. Check if SOMEONE ELSE has this card
+                var isTakenByOther = await _repository.CountAsync<Card>(c =>
+                    c.RoomId == request.RoomId &&
+                    c.MasterCardId == request.MasterCardId) > 0;
+
+                if (isTakenByOther)
+                    return Response<bool>.Error("This card has been snatched by another player!");
+
+                // 3. Check Limit (Max 2)
                 var userCardCount = await _repository.CountAsync<Card>(c =>
                     c.RoomId == request.RoomId && c.UserId == request.UserId);
-                if (userCardCount >= 2) return Response<bool>.Error("Max 2 cards allowed.");
 
+                if (userCardCount >= 2)
+                    return Response<bool>.Error("You can only choose a maximum of 2 cards.");
+
+                // 4. Save the selection
                 await _repository.PickMasterCardAsync(request.UserId, request.RoomId, request.MasterCardId);
             }
             else
             {
-                // UNSELECT LOGIC
+                // UNSELECT LOGIC: Remove the record from the database
                 await _repository.DeleteAsync<Card>(c =>
                     c.RoomId == request.RoomId &&
                     c.UserId == request.UserId &&
                     c.MasterCardId == request.MasterCardId);
+
                 await _repository.SaveChanges();
             }
 
-            // BROADCAST TO ALL
+            // 5. BROADCAST THE CHANGE
+            // This ensures everyone else's grid updates (greying out or enabling the button)
+            // and the sender's UI knows the action was confirmed.
             await _hubContext.Clients.Group(request.RoomId.ToString())
                 .CardSelectionChanged(request.MasterCardId, request.IsSelecting, request.UserId);
 

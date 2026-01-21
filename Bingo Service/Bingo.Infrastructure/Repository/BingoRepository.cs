@@ -43,7 +43,7 @@ public class BingoRepository : IBingoRepository
     {
         return await _context.Cards
             .Include(c => c.MasterCard)
-                .ThenInclude(m => m.Numbers)
+                .ThenInclude(m => m.Numbers) // <--- THIS MUST BE HERE
             .Where(c => c.UserId == userId && c.RoomId == roomId)
             .ToListAsync();
     }
@@ -199,6 +199,7 @@ public class BingoRepository : IBingoRepository
             .Select(c => (int)c.MasterCardId)
             .ToListAsync();
     }
+  
     /* ============================================================
      * Generic DB Operations
      * ============================================================ */
