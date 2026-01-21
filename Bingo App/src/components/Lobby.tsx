@@ -85,39 +85,61 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
     }, [userId]);
 
     const connectSignalR = async (rId: number) => {
-        // Build connection
+        // ✅ Enforce singleton
+        if (connectionRef.current) {
+            const state = connectionRef.current.state;
+
+            if (state === signalR.HubConnectionState.Connected) {
+                console.log("[SignalR] Already connected");
+                return;
+            }
+
+            if (state === signalR.HubConnectionState.Connecting) {
+                console.log("[SignalR] Connection in progress");
+                return;
+            }
+        }
+
         const connection = new signalR.HubConnectionBuilder()
-            .withUrl("/bingohub") // Ensure this matches your .NET MapHub path
+            .withUrl("https://association-cakes-gmt-luther.trycloudflare.com/bingohub", {
+                transport: signalR.HttpTransportType.WebSockets,
+                skipNegotiation: false
+            })
             .withAutomaticReconnect()
             .configureLogging(signalR.LogLevel.Information)
             .build();
 
-        // Listener for real-time updates from other players
-        connection.on("CardSelectionChanged", (cardId: number, isLocked: boolean, senderId: number) => {
-            const cid = Number(cardId);
-            const isMe = senderId.toString() === userId.toString();
+        // ✅ Register handlers ONCE
+        connection.on(
+            "CardSelectionChanged",
+            (cardId: number, isLocked: boolean, senderId: number) => {
+                const cid = Number(cardId);
+                const isMe = senderId === userId;
 
-            // If the message is from me, ignore it. My local state is already updated via handleToggleCard.
-            if (isMe) return;
+                if (isMe) return;
 
-            setLockedCards(prev => {
-                if (isLocked) {
-                    return [...new Set([...prev, cid])]; // Add to greyed out list
-                } else {
-                    return prev.filter(id => id !== cid); // Remove from greyed out list
-                }
-            });
-        });
+                setLockedCards(prev =>
+                    isLocked
+                        ? [...new Set([...prev, cid])]
+                        : prev.filter(id => id !== cid)
+                );
+            }
+        );
 
         try {
             await connection.start();
-            console.log("SignalR Connected");
+            console.log("[SignalR] Connected");
+
+            // ✅ THIS fixes the lobby issue
             await connection.invoke("JoinRoomGroup", rId.toString());
+            console.log(`[SignalR] Joined room ${rId}`);
+
             connectionRef.current = connection;
         } catch (err) {
-            console.error("SignalR Connection Error:", err);
+            console.error("[SignalR] Connection Error:", err);
         }
     };
+
 
     // 3. Select / Deselect Logic
     const handleToggleCard = async (cardId: number) => {
