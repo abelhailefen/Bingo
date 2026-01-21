@@ -219,40 +219,87 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
                 </div>
 
                 {/* Selected Cards Preview Section */}
-                <div className="max-w-md mx-auto space-y-6 pb-24">
+                <div className="max-w-4xl mx-auto space-y-6 pb-24">
                     <h3 className="text-center text-xs font-bold text-indigo-400 uppercase tracking-widest">
                         Your Selected Boards ({myCards.length}/2)
                     </h3>
 
-                    {myCards.map((card) => (
-                        <div key={getCardId(card)} className="relative bg-[#fefce8] p-3 rounded-xl shadow-2xl animate-in fade-in zoom-in duration-300">
-                            {/* Deselect X Button */}
-                            <button
-                                onClick={() => handleToggleCard(getCardId(card))}
-                                className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-20"
-                            >
-                                <span className="font-bold text-lg">×</span>
-                            </button>
+                    {/* Container for side-by-side cards */}
+                    <div className="flex gap-4 justify-center">
+                        {/* First Card Slot */}
+                        <div className={`transition-all duration-300 ${myCards.length === 2 ? 'w-1/2' : 'w-full'}`}>
+                            {myCards[0] ? (
+                                <div className="relative bg-[#fefce8] p-3 rounded-xl shadow-2xl animate-in fade-in zoom-in duration-300">
+                                    {/* Deselect X Button */}
+                                    <button
+                                        onClick={() => handleToggleCard(getCardId(myCards[0]))}
+                                        className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-20"
+                                    >
+                                        <span className="font-bold text-lg">×</span>
+                                    </button>
 
-                            <div className="grid grid-cols-5 text-center font-black text-[12px] mb-2">
-                                <span className="text-orange-600">B</span><span className="text-green-600">I</span>
-                                <span className="text-blue-600">N</span><span className="text-red-600">G</span>
-                                <span className="text-purple-600">O</span>
+                                    <div className="grid grid-cols-5 text-center font-black text-[12px] mb-2">
+                                        <span className="text-orange-600">B</span><span className="text-green-600">I</span>
+                                        <span className="text-blue-600">N</span><span className="text-red-600">G</span>
+                                        <span className="text-purple-600">O</span>
+                                    </div>
+
+                                    {renderCardGrid(getNumbers(myCards[0]))}
+
+                                    <p className="text-center text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-tighter">
+                                        Board #{getCardId(myCards[0])}
+                                    </p>
+                                </div>
+                            ) : (
+                                /* Empty Slot */
+                                <div className="h-full border-2 border-dashed border-slate-700 rounded-2xl bg-slate-900/50 flex flex-col items-center justify-center p-8">
+                                    <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mb-3">
+                                        <span className="text-2xl text-slate-600">+</span>
+                                    </div>
+                                    <p className="text-slate-500 text-sm text-center">Select a board</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Second Card Slot - Only visible when one card is selected */}
+                        {myCards.length === 1 && (
+                            <div className="w-1/2">
+                                <div className="h-full border-2 border-dashed border-slate-700 rounded-2xl bg-slate-900/50 flex flex-col items-center justify-center p-8">
+                                    <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mb-3">
+                                        <span className="text-2xl text-slate-600">+</span>
+                                    </div>
+                                    <p className="text-slate-500 text-sm text-center">Select another board</p>
+                                </div>
                             </div>
+                        )}
 
-                            {renderCardGrid(getNumbers(card))}
+                        {/* Second Card - When selected */}
+                        {myCards[1] && (
+                            <div className="w-1/2">
+                                <div className="relative bg-[#fefce8] p-3 rounded-xl shadow-2xl animate-in fade-in zoom-in duration-300">
+                                    {/* Deselect X Button */}
+                                    <button
+                                        onClick={() => handleToggleCard(getCardId(myCards[1]))}
+                                        className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full flex items-center justify-center shadow-lg border-2 border-white z-20"
+                                    >
+                                        <span className="font-bold text-lg">×</span>
+                                    </button>
 
-                            <p className="text-center text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-tighter">
-                                Board #{getCardId(card)}
-                            </p>
-                        </div>
-                    ))}
+                                    <div className="grid grid-cols-5 text-center font-black text-[12px] mb-2">
+                                        <span className="text-orange-600">B</span><span className="text-green-600">I</span>
+                                        <span className="text-blue-600">N</span><span className="text-red-600">G</span>
+                                        <span className="text-purple-600">O</span>
+                                    </div>
 
-                    {myCards.length === 0 && (
-                        <div className="text-center py-10 border-2 border-dashed border-slate-800 rounded-2xl">
-                            <p className="text-slate-500 italic text-sm">Select up to 2 cards from the grid above to join the game</p>
-                        </div>
-                    )}
+                                    {renderCardGrid(getNumbers(myCards[1]))}
+
+                                    <p className="text-center text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-tighter">
+                                        Board #{getCardId(myCards[1])}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 

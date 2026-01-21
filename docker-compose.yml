@@ -49,7 +49,7 @@ services:
       - bingo-network
 
   bingo-frontend:
-    image: bingo-frontend:1.0.10
+    image: bingo-frontend:1.0.11
     build:
       context: Bingo App
       dockerfile: Dockerfile
