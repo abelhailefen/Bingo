@@ -31,15 +31,7 @@ namespace Bingo.Core.Features.Gameplay.Handler
 
             if (masterCard == null) return Response<MasterCardDto>.NotFound("Template not found");
 
-            // 2. Check if anyone in this room has ALREADY purchased this card
-            var isTaken = await _repository.CountAsync<Card>(c =>
-                c.RoomId == request.RoomId && c.MasterCardId == request.MasterCardId) > 0;
-
-            if (isTaken)
-            {
-                return Response<MasterCardDto>.Error("This card has already been taken by another player.");
-            }
-
+           
             // 3. Map to DTO
             var dto = new MasterCardDto
             {

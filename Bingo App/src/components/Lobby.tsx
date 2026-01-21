@@ -16,12 +16,12 @@ interface LobbyProps {
 
 export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
     const [roomId, setRoomId] = useState<number | null>(null);
-    const [lockedCards, setLockedCards] = useState<number[]>([]); // All cards taken in the room
-    const [myCards, setMyCards] = useState<MasterCard[]>([]);     // Full card objects for the user
+    const [lockedCards, setLockedCards] = useState<number[]>([]); // Cards taken by OTHERS
+    const [myCards, setMyCards] = useState<MasterCard[]>([]);     // Full card objects for ME
     const [countdown, setCountdown] = useState(60);
     const connectionRef = useRef<signalR.HubConnection | null>(null);
 
-    // Helpers to handle Casing variations from .NET API
+    // Helpers to handle Casing variations from .NET API (PascalCase vs camelCase)
     const getCardId = (obj: any): number => {
         if (!obj) return 0;
         return obj.masterCardId ?? obj.MasterCardId ?? obj.master_card_id ?? 0;
@@ -53,15 +53,19 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
                         getMyCards(rId, userId)
                     ]);
 
-                    // Sync cards taken by everyone
-                    if (takenRes.data) {
-                        setLockedCards(takenRes.data.map(id => Number(id)));
-                    }
-
-                    // Sync cards belonging to ME (for preview)
+                    // Initial sync of my own cards (Full objects for preview)
                     if (myCardsRes.data) {
                         const existing = myCardsRes.data.map((c: any) => c.masterCard || c.MasterCard);
                         setMyCards(existing.filter(Boolean));
+                    }
+
+                    // Initial sync of cards taken by OTHERS
+                    if (takenRes.data) {
+                        const myIds = myCardsRes.data?.map((c: any) => getCardId(c.masterCard || c.MasterCard)) || [];
+                        const othersTaken = takenRes.data
+                            .map(id => Number(id))
+                            .filter(id => !myIds.includes(id));
+                        setLockedCards(othersTaken);
                     }
 
                     connectSignalR(rId);
@@ -74,42 +78,44 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
         initLobby();
 
         return () => {
-            connectionRef.current?.stop();
+            if (connectionRef.current) {
+                connectionRef.current.stop();
+            }
         };
     }, [userId]);
 
     const connectSignalR = async (rId: number) => {
+        // Build connection
         const connection = new signalR.HubConnectionBuilder()
-            .withUrl("/bingohub")
+            .withUrl("/bingohub") // Ensure this matches your .NET MapHub path
             .withAutomaticReconnect()
+            .configureLogging(signalR.LogLevel.Information)
             .build();
 
+        // Listener for real-time updates from other players
         connection.on("CardSelectionChanged", (cardId: number, isLocked: boolean, senderId: number) => {
             const cid = Number(cardId);
             const isMe = senderId.toString() === userId.toString();
 
+            // If the message is from me, ignore it. My local state is already updated via handleToggleCard.
+            if (isMe) return;
+
             setLockedCards(prev => {
                 if (isLocked) {
-                    // Card was just taken
-                    return [...new Set([...prev, cid])];
+                    return [...new Set([...prev, cid])]; // Add to greyed out list
                 } else {
-                    // Card was just released
-                    return prev.filter(id => id !== cid);
+                    return prev.filter(id => id !== cid); // Remove from greyed out list
                 }
             });
-
-            // If I released a card from another source (e.g. another tab), update my preview list
-            if (isMe && !isLocked) {
-                setMyCards(prev => prev.filter(c => getCardId(c) !== cid));
-            }
         });
 
         try {
             await connection.start();
+            console.log("SignalR Connected");
             await connection.invoke("JoinRoomGroup", rId.toString());
             connectionRef.current = connection;
         } catch (err) {
-            console.error("SignalR Connect Error:", err);
+            console.error("SignalR Connection Error:", err);
         }
     };
 
@@ -120,24 +126,26 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
         const isAlreadyMine = myCards.some(c => getCardId(c) === cardId);
 
         try {
-            // If isAlreadyMine is true, we send IsLocked = false to deselect it
+            // API Call: Source of Truth
             const res = await selectCardLock(roomId, cardId, !isAlreadyMine, userId);
 
             if (res && !res.isFailed) {
                 if (!isAlreadyMine) {
-                    // SELECTING: Get the full card template to show in preview
+                    // SELECTING: Fetch full template for preview section
                     const cardData = await getMasterCard(roomId, cardId);
                     if (cardData.data) {
                         setMyCards(prev => [...prev, cardData.data]);
-                        setLockedCards(prev => [...new Set([...prev, cardId])]);
                     }
                 } else {
-                    // DESELECTING: Remove from local state
+                    // DESELECTING: Remove from local preview
                     setMyCards(prev => prev.filter(c => getCardId(c) !== cardId));
-                    setLockedCards(prev => prev.filter(id => id !== cardId));
                 }
             } else {
+                // If API fails (e.g. someone else clicked a millisecond faster)
                 alert(res.message || "Action failed!");
+                // Refresh taken cards to fix UI sync
+                const takenRes = await getTakenCards(roomId);
+                setLockedCards(takenRes.data.map(id => Number(id)));
             }
         } catch (err) {
             console.error("Toggle Error:", err);
@@ -190,7 +198,7 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
                 <div className="grid grid-cols-10 gap-1.5 max-w-xl mx-auto mb-8">
                     {Array.from({ length: 100 }, (_, i) => i + 1).map(id => {
                         const isMine = myCards.some(c => getCardId(c) === id);
-                        const isTakenByOther = lockedCards.includes(id) && !isMine;
+                        const isTakenByOther = lockedCards.includes(id);
 
                         return (
                             <button
@@ -217,7 +225,7 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
                     </h3>
 
                     {myCards.map((card) => (
-                        <div key={getCardId(card)} className="relative bg-[#fefce8] p-3 rounded-xl shadow-2xl transform transition-all animate-in fade-in zoom-in duration-300">
+                        <div key={getCardId(card)} className="relative bg-[#fefce8] p-3 rounded-xl shadow-2xl animate-in fade-in zoom-in duration-300">
                             {/* Deselect X Button */}
                             <button
                                 onClick={() => handleToggleCard(getCardId(card))}
@@ -257,8 +265,8 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
                     onClick={() => roomId && onEnterGame(roomId)}
                     disabled={myCards.length === 0}
                     className={`py-3 rounded-xl font-bold text-sm transition-all ${myCards.length > 0
-                            ? 'bg-orange-500 hover:bg-orange-400 shadow-lg shadow-orange-500/20 text-white'
-                            : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                        ? 'bg-orange-500 hover:bg-orange-400 shadow-lg shadow-orange-500/20 text-white'
+                        : 'bg-slate-800 text-slate-600 cursor-not-allowed'
                         }`}
                 >
                     START GAME

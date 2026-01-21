@@ -65,9 +65,10 @@ namespace Bingo.Core.Features.Gameplay.Handler
             // 5. BROADCAST THE CHANGE
             // This ensures everyone else's grid updates (greying out or enabling the button)
             // and the sender's UI knows the action was confirmed.
+            // Use OthersInGroup so the person who clicked doesn't get a redundant (and confusing) websocket message
+            // Use .Group instead of .OthersInGroup
             await _hubContext.Clients.Group(request.RoomId.ToString())
                 .CardSelectionChanged(request.MasterCardId, request.IsSelecting, request.UserId);
-
             return Response<bool>.Success(true);
         }
     }

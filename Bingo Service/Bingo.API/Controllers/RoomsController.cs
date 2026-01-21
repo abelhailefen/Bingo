@@ -20,14 +20,12 @@ namespace Bingo.API.Controllers;
 public class RoomsController : ControllerBase
 {
     private readonly IMediator _mediator;
-    private readonly IHubContext<BingoHub, IBingoHubClient> _hubContext;
-    public RoomsController(IMediator mediator, IHubContext<BingoHub, IBingoHubClient> hubContext)
+    public RoomsController(IMediator mediator )
     {
         _mediator = mediator;
-        _hubContext = hubContext;
     }
     [HttpGet("{roomId}/users/{userId}/cards")]
-    public async Task<IActionResult> GetMyCards(long roomId, long userId)
+    public async Task<ActionResult<Response<List<Card>>>> GetMyCards(long roomId, long userId)
     {
         var result = await _mediator.Send(new GetMyCardsQuery(roomId, userId));
         return Ok(result);
@@ -44,7 +42,7 @@ public class RoomsController : ControllerBase
         return Ok(result);
     }
     [HttpGet("{roomId}/taken-cards")]
-    public async Task<IActionResult> GetTakenCards(long roomId)
+    public async Task<ActionResult<Response<List<int>>>> GetTakenCards(long roomId)
     {
         // Add a query or call repo directly if simple
         var takenCards = await _mediator.Send(new GetTakenCardsQuery(roomId));
@@ -53,7 +51,7 @@ public class RoomsController : ControllerBase
     public record SelectCardRequest(int MasterCardId, bool IsLocked, long UserId);
 
     [HttpPost("{roomId}/select-card")]
-    public async Task<IActionResult> SelectCard(long roomId, [FromBody] SelectCardRequest request)
+    public async Task<ActionResult<Response<bool>>> SelectCard(long roomId, [FromBody] SelectCardRequest request)
     {
         // Ensure you are passing the request.UserId to the command
         var result = await _mediator.Send(new SelectCardCommand(

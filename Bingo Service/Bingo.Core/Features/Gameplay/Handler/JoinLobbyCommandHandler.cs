@@ -15,7 +15,7 @@ namespace Bingo.Core.Features.Gameplay.Handler;
 public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Response<JoinLobbyResponse>>
 {
     private readonly IBingoRepository _repository;
-
+    private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
     public JoinLobbyCommandHandler(IBingoRepository repository)
     {
         _repository = repository;
@@ -23,6 +23,8 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
 
     public async Task<Response<JoinLobbyResponse>> Handle(JoinLobbyCommand request, CancellationToken cancellationToken)
     {
+        await _semaphore.WaitAsync(cancellationToken);
+
         try
         {
             // 1. SAFETY CHECK: Ensure the User exists in the database.
@@ -94,10 +96,15 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
 
             return Response<JoinLobbyResponse>.Success(responseData);
         }
+
         catch (Exception ex)
         {
             // Log this error in your logging system
             return Response<JoinLobbyResponse>.Error($"Failed to join lobby: {ex.Message}");
+        }
+        finally
+        {
+            _semaphore.Release();
         }
     }
 }
