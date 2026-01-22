@@ -101,7 +101,7 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
         }
 
         const connection = new signalR.HubConnectionBuilder()
-            .withUrl("https://association-cakes-gmt-luther.trycloudflare.com/bingohub", {
+            .withUrl("/bingohub", { 
                 transport: signalR.HttpTransportType.WebSockets,
                 skipNegotiation: false
             })
@@ -148,26 +148,39 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
         const isAlreadyMine = myCards.some(c => getCardId(c) === cardId);
 
         try {
-            // API Call: Source of Truth
+            // ✅ AUTO-REPLACE LOGIC
+            // If I'm picking a NEW card and I already have 2...
+            if (!isAlreadyMine && myCards.length >= 2) {
+                const secondCard = myCards[1];
+                const secondCardId = getCardId(secondCard);
+
+                // 1. Tell API to unlock the 2nd card
+                await selectCardLock(roomId, secondCardId, false, userId);
+
+                // 2. Locally remove it so UI updates immediately
+                setMyCards(prev => [prev[0]]);
+            }
+
+            // ✅ SELECT / DESELECT TARGET CARD
             const res = await selectCardLock(roomId, cardId, !isAlreadyMine, userId);
 
             if (res && !res.isFailed) {
                 if (!isAlreadyMine) {
-                    // SELECTING: Fetch full template for preview section
                     const cardData = await getMasterCard(roomId, cardId);
                     if (cardData.data) {
-                        setMyCards(prev => [...prev, cardData.data]);
+                        setMyCards(prev => {
+                            // Ensure we don't exceed 2 due to race conditions
+                            const filtered = prev.slice(0, 1);
+                            return [...filtered, cardData.data];
+                        });
                     }
                 } else {
-                    // DESELECTING: Remove from local preview
                     setMyCards(prev => prev.filter(c => getCardId(c) !== cardId));
                 }
             } else {
-                // If API fails (e.g. someone else clicked a millisecond faster)
-                alert(res.message || "Action failed!");
-                // Refresh taken cards to fix UI sync
+                alert(res.message || "Card already taken!");
                 const takenRes = await getTakenCards(roomId);
-                setLockedCards(takenRes.data.map(id => Number(id)));
+                setLockedCards(takenRes.data.map((id: any) => Number(id)));
             }
         } catch (err) {
             console.error("Toggle Error:", err);
