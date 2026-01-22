@@ -7,6 +7,11 @@ namespace Bingo.Core.Features.Gameplay.Contract.Command
     public class JoinLobbyCommand : IRequest<Response<JoinLobbyResponse>>
     {
         public long UserId { get; }
-        public JoinLobbyCommand(long userId) => UserId = userId;
+        public decimal CardPrice { get; }
+        public JoinLobbyCommand(long userId, decimal cardPrice)
+        {
+            UserId = userId;
+            CardPrice = cardPrice;
+        } 
     }
 }

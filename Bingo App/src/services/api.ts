@@ -48,8 +48,8 @@ export const getMasterCard = async (roomId: number, cardId: number): Promise<Api
 };
 
 // Automatic grouping: finds or creates a waiting room
-export const joinAutoLobby = async (userId: number): Promise<ApiResponse<{ roomId: number }>> => {
-    const response = await api.post('/rooms/lobby/join', { userId });
+export const joinAutoLobby = async (userId: number, cardPrice: number): Promise<ApiResponse<{ roomId: number }>> => {
+    const response = await api.post('/rooms/lobby/join', { userId, cardPrice });
     return response.data;
 };
 

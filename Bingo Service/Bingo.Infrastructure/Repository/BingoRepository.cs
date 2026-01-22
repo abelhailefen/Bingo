@@ -177,9 +177,9 @@ public class BingoRepository : IBingoRepository
             .Include(u => u.RoomParticipations)
             .FirstOrDefaultAsync(u => u.UserId == userId);
     }
-    public async Task<Room> GetAvailableRoom(CancellationToken ct)
+    public async Task<Room> GetAvailableRoom(decimal cardPrice,CancellationToken ct)
     {
-        var roomQuery = await GetQueryAsync<Room>(r => r.Status == RoomStatusEnum.Waiting);
+        var roomQuery = await GetQueryAsync<Room>(r => r.Status == RoomStatusEnum.Waiting && r.CardPrice == cardPrice);
         var room = await roomQuery.OrderBy(r => r.CreatedAt).FirstOrDefaultAsync(ct);
         return room;
 

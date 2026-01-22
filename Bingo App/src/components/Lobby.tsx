@@ -11,10 +11,12 @@ import type { MasterCard } from '../types/gameplay';
 
 interface LobbyProps {
     userId: number;
+    wager: number;
     onEnterGame: (id: number) => void;
+    onBack?: () => void;
 }
 
-export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
+export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     const [roomId, setRoomId] = useState<number | null>(null);
     const [lockedCards, setLockedCards] = useState<number[]>([]); // Cards taken by OTHERS
     const [myCards, setMyCards] = useState<MasterCard[]>([]);     // Full card objects for ME
@@ -42,7 +44,7 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
     useEffect(() => {
         const initLobby = async () => {
             try {
-                const res = await joinAutoLobby(userId);
+                const res = await joinAutoLobby(userId, wager);
                 if (res?.data) {
                     const rId = res.data.roomId;
                     setRoomId(rId);
@@ -82,7 +84,7 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
                 connectionRef.current.stop();
             }
         };
-    }, [userId]);
+    }, [userId, wager]);
 
     const connectSignalR = async (rId: number) => {
         // ✅ Enforce singleton
@@ -220,7 +222,7 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
                 </div>
                 <div className="bg-white rounded-2xl py-2 flex flex-col items-center justify-center text-slate-900 shadow-xl">
                     <span className="text-[9px] font-black uppercase text-indigo-400">Stake</span>
-                    <span className="text-xl font-black">10</span>
+                    <span className="text-xl font-black">{wager}</span>
                 </div>
                 <div className="bg-white rounded-2xl py-2 flex flex-col items-center justify-center text-slate-900 shadow-xl">
                     <span className="text-[9px] font-black uppercase text-indigo-400">Starts</span>
@@ -340,7 +342,9 @@ export const Lobby = ({ userId, onEnterGame }: LobbyProps) => {
 
             {/* Fixed Footer */}
             <div className="fixed bottom-0 left-0 right-0 p-4 grid grid-cols-2 gap-4 bg-slate-900/90 backdrop-blur-md border-t border-white/10 z-30">
-                <button className="bg-slate-800 py-3 rounded-xl font-bold text-sm hover:bg-slate-700 transition-colors">
+                <button
+                    onClick={onBack}
+                    className="bg-slate-800 py-3 rounded-xl font-bold text-sm hover:bg-slate-700 transition-colors">
                     BACK
                 </button>
                 <button

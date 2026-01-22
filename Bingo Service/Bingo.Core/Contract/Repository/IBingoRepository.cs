@@ -14,7 +14,7 @@ public interface IBingoRepository
     // Updated: Replaced CreateCardWithNumbersAsync with PickMasterCardAsync
     Task<Card> PickMasterCardAsync(long userId, long roomId, int masterCardId);
     Task<MasterCard> GetMasterCard(long masterCardId, CancellationToken ct);
-    Task<Room> GetAvailableRoom(CancellationToken ct);
+    Task<Room> GetAvailableRoom(decimal cardPrice, CancellationToken ct);
     Task<List<int>> GetTakenCardIdsAsync(long roomId);
     Task<List<long>> GetTakenCards(long roomId, CancellationToken ct);
     // Removed: MarkNumberOnCardAsync (Marking is now calculated on-the-fly)

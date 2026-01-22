@@ -7,42 +7,39 @@ import { telegramInit } from './services/api';
 const App = () => {
     const [view, setView] = useState<'auth' | 'wager' | 'lobby' | 'game'>('auth');
     const [userId, setUserId] = useState<number | null>(null);
-    const [_authToken, setAuthToken] = useState<string | null>(null);
-    const [_wager, setWager] = useState<number | null>(null);
+
+    // FIX: Removed 'authToken' variable name since it wasn't being used. 
+    // We only need the setter to trigger the logic.
+    const [, setAuthToken] = useState<string | null>(null);
+
+    const [wager, setWager] = useState<number | null>(null);
     const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
 
     useEffect(() => {
         const initTelegramAuth = async () => {
             const telegram = (window as any).Telegram?.WebApp;
 
-            // 1. Try Telegram Auth
             if (telegram?.initData) {
                 telegram.ready();
                 telegram.expand();
                 try {
                     const response = await telegramInit(telegram.initData);
-                    console.log("Auth Response:", response);
-
                     if (response.success && response.data) {
                         setAuthToken(response.data);
                         localStorage.setItem('bingo_token', response.data);
 
-                        // Extract ID from token "Token_For_12345" or similar
                         const idMatch = response.data.match(/\d+$/);
                         const id = idMatch ? parseInt(idMatch[0]) : telegram.initDataUnsafe?.user?.id;
 
                         setUserId(id || 999);
                         setView('wager');
-                        return; // Success!
-                    } else {
-                        console.warn("Server auth failed, using guest mode");
+                        return;
                     }
                 } catch (error) {
                     console.error('Auth API Error:', error);
                 }
             }
 
-            // 2. Fallback/Dev Mode (If Telegram is missing or Server fails)
             console.log("Entering Guest/Dev Mode");
             const fallbackId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || 12345;
             setUserId(fallbackId);
@@ -62,6 +59,11 @@ const App = () => {
         setView('game');
     };
 
+    const handleBackToWager = () => {
+        setWager(null);
+        setView('wager');
+    };
+
     return (
         <div className="min-h-screen bg-slate-950 text-white">
             {view === 'auth' && (
@@ -70,10 +72,26 @@ const App = () => {
                     <p className="text-indigo-400 font-medium">Connecting to Bingo...</p>
                 </div>
             )}
-            {view === 'wager' && <WagerSelection onWagerSelected={handleWagerSelected} />}
-            {view === 'lobby' && userId && <Lobby userId={userId} onEnterGame={handleEnterGame} />}
+
+            {view === 'wager' && (
+                <WagerSelection onWagerSelected={handleWagerSelected} />
+            )}
+
+            {view === 'lobby' && userId && wager !== null && (
+                <Lobby
+                    userId={userId}
+                    wager={wager}
+                    onEnterGame={handleEnterGame}
+                    onBack={handleBackToWager}
+                />
+            )}
+
             {view === 'game' && activeRoomId && userId && (
-                <GameRoom roomId={activeRoomId} userId={userId} onLeave={() => setView('lobby')} />
+                <GameRoom
+                    roomId={activeRoomId}
+                    userId={userId}
+                    onLeave={() => setView('lobby')}
+                />
             )}
         </div>
     );

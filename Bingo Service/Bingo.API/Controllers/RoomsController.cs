@@ -73,11 +73,8 @@ public class RoomsController : ControllerBase
     [HttpPost("lobby/join")]
     public async Task<ActionResult<Response<JoinLobbyResponse>>> JoinLobby([FromBody] JoinRoomRequest request)
     {
-        var result = await _mediator.Send(new JoinLobbyCommand(request.UserId));
+        var result = await _mediator.Send(new JoinLobbyCommand(request.UserId, request.CardPrice));
 
-        // After joining, we need to know which cards are already taken
-        // You can either include this in JoinLobbyCommand's result 
-        // or add a specific endpoint below
         return Ok(result);
     }
 
@@ -91,7 +88,7 @@ public class RoomsController : ControllerBase
 
     public record ConfirmSelectionRequest(long UserId, long RoomId, List<int> MasterCardIds);
 
-    public record JoinRoomRequest(long UserId);
+    public record JoinRoomRequest(long UserId, decimal CardPrice);
     public record UserRequest(long UserId);
     public record ClaimWinRequest(long UserId, long CardId, WinTypeEnum WinType);
 }

@@ -48,18 +48,18 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
             }
 
             // 2. Find a waiting room (Status = Waiting)
-            var room = await _repository.GetAvailableRoom(cancellationToken);
+            var room = await _repository.GetAvailableRoom(request.CardPrice, cancellationToken);
 
             // 3. If no room exists, create a new System-managed room
             if (room == null)
             {
                 room = new Room
                 {
-                    Name = "Public Bingo Room",
+                    Name = $"{request.CardPrice} Birr Public Room",
                     RoomCode = Guid.NewGuid().ToString()[..6].ToUpper(),
                     Status = RoomStatusEnum.Waiting,
                     MaxPlayers = 100,
-                    CardPrice = 10.00m,
+                    CardPrice = request.CardPrice, // Use requested price here!
                     Pattern = WinPatternEnum.Line,
                     CreatedAt = DateTime.UtcNow,
                     ScheduledStartTime = DateTime.UtcNow.AddMinutes(2)
