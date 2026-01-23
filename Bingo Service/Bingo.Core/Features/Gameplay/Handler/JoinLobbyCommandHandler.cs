@@ -91,7 +91,7 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
             var takenCards = await _repository.GetTakenCards(room.RoomId, cancellationToken);
 
             // 6. Map to DTO
-            var responseData = new JoinLobbyResponse(room.RoomId, takenCards);
+            var responseData = new JoinLobbyResponse(room.RoomId, takenCards, room.ScheduledStartTime);
 
 
             return Response<JoinLobbyResponse>.Success(responseData);

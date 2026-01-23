@@ -6,6 +6,6 @@ using System.Threading.Tasks;
 
 namespace Bingo.Core.Features.Gameplay.DTOs
 {
-    public record JoinLobbyResponse(long RoomId, List<long> LockedCardIds);
+    public record JoinLobbyResponse(long RoomId, List<long> TakenCardIds, DateTime? ScheduledStartTime);
 
 }

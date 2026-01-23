@@ -17,6 +17,7 @@ builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(JoinL
 
 builder.Services.AddHostedService<TelegramBotService>();
 builder.Services.AddSignalR();
+builder.Services.AddHostedService<RoomManagerService>();
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     // This prevents the infinite loop: MasterCard -> Number -> MasterCard

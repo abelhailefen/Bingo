@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { ApiResponse } from '../types/api';
-import type { Room, RoomSummary } from '../types/room';
+import type { Room, RoomSummary, JoinLobbyResponse } from '../types/room';
 import type { MasterCard } from '../types/gameplay';
 
 const api = axios.create({
@@ -48,7 +48,7 @@ export const getMasterCard = async (roomId: number, cardId: number): Promise<Api
 };
 
 // Automatic grouping: finds or creates a waiting room
-export const joinAutoLobby = async (userId: number, cardPrice: number): Promise<ApiResponse<{ roomId: number }>> => {
+export const joinAutoLobby = async (userId: number, cardPrice: number): Promise<ApiResponse<JoinLobbyResponse>> => {
     const response = await api.post('/rooms/lobby/join', { userId, cardPrice });
     return response.data;
 };

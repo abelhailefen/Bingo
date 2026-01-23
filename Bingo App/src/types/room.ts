@@ -25,3 +25,9 @@ export interface Room {
     calledNumbers: { number: number }[];
     players: RoomPlayer[];
 }
+
+export interface JoinLobbyResponse {
+    roomId: number;
+    scheduledStartTime: string;
+    takenCardIds: number[]; // Matching the backend DTO fully
+}

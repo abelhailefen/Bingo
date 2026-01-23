@@ -28,7 +28,7 @@ services:
       - bingo-network
 
   bingo-backend:
-    image: bingo-backend:1.0.10
+    image: bingo-backend:1.0.11
     build:
       context: .
       dockerfile: Bingo Service/Bingo.API/Dockerfile
@@ -52,7 +52,7 @@ services:
       - bingo-network
 
   bingo-frontend:
-    image: bingo-frontend:1.0.18
+    image: bingo-frontend:1.0.20
     build:
       context: Bingo App
       dockerfile: Dockerfile
