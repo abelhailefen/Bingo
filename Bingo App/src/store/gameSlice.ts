@@ -1,0 +1,48 @@
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import type { MasterCard } from '../types/gameplay';
+
+interface GameState {
+    roomId: number | null;
+    wager: number | null;
+    myCards: MasterCard[];
+    lockedCards: number[];
+}
+
+const initialState: GameState = {
+    roomId: null,
+    wager: null,
+    myCards: [],
+    lockedCards: [],
+};
+
+export const gameSlice = createSlice({
+    name: 'game',
+    initialState,
+    reducers: {
+        setLobbyData: (state, action: PayloadAction<{ roomId: number; wager: number }>) => {
+            state.roomId = action.payload.roomId;
+            state.wager = action.payload.wager;
+        },
+        updateMyCards: (state, action: PayloadAction<MasterCard[]>) => {
+            state.myCards = action.payload;
+        },
+        updateLockedCards: (state, action: PayloadAction<number[]>) => {
+            state.lockedCards = action.payload;
+        },
+        // NEW: Handle SignalR updates directly in the state
+        syncLockedCards: (state, action: PayloadAction<{ cardId: number; isLocked: boolean }>) => {
+            const { cardId, isLocked } = action.payload;
+            if (isLocked) {
+                if (!state.lockedCards.includes(cardId)) {
+                    state.lockedCards.push(cardId);
+                }
+            } else {
+                state.lockedCards = state.lockedCards.filter(id => id !== cardId);
+            }
+        },
+        resetLobby: () => initialState
+    },
+});
+
+export const { setLobbyData, updateMyCards, updateLockedCards, syncLockedCards, resetLobby } = gameSlice.actions;
+export default gameSlice.reducer;

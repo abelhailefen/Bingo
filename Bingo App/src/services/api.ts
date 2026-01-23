@@ -93,5 +93,8 @@ export const getTakenCards = async (roomId: number): Promise<ApiResponse<number[
     const response = await api.get(`/rooms/${roomId}/taken-cards`);
     return response.data;
 };
-
+export const leaveLobby = async (roomId: number, userId: number): Promise<ApiResponse<void>> => {
+    const response = await api.post(`/rooms/${roomId}/leave`, { userId });
+    return response.data;
+};
 export default api;

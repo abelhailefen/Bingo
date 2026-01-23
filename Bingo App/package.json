@@ -11,11 +11,13 @@
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",
+    "@reduxjs/toolkit": "^2.11.2",
     "@types/canvas-confetti": "^1.9.0",
     "axios": "^1.13.2",
     "canvas-confetti": "^1.9.4",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react-dom": "^19.2.3",
+    "react-redux": "^9.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

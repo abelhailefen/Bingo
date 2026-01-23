@@ -7,8 +7,9 @@ using Bingo.Core.Features.Gameplay.DTOs;
 using Bingo.Core.Features.Rooms.Contract.Command;
 using Bingo.Core.Features.Rooms.Contract.Query;
 using Bingo.Core.Features.Rooms.DTOs;
-using Bingo.Core.Models;
+using Bingo.Core.Gameplay.Contract.Command;
 using Bingo.Core.Hubs;
+using Bingo.Core.Models;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -23,6 +24,13 @@ public class RoomsController : ControllerBase
     public RoomsController(IMediator mediator )
     {
         _mediator = mediator;
+    }
+    [HttpPost("{roomId}/leave")]
+    public async Task<ActionResult<Response<bool>>> LeaveRoom(long roomId, [FromBody] LeaveRoomRequest request)
+    {
+        // The handler now manages DB cleanup AND SignalR broadcasting
+        var result = await _mediator.Send(new LeaveLobbyCommand(roomId, request.UserId));
+        return Ok(result);
     }
     [HttpGet("{roomId}/users/{userId}/cards")]
     public async Task<ActionResult<Response<List<Card>>>> GetMyCards(long roomId, long userId)

@@ -28,7 +28,7 @@ services:
       - bingo-network
 
   bingo-backend:
-    image: bingo-backend:1.0.8
+    image: bingo-backend:1.0.10
     build:
       context: .
       dockerfile: Bingo Service/Bingo.API/Dockerfile
@@ -37,7 +37,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=host.docker.internal;Port=5432;Database=bingo;Username=postgres;Password=
       - TelegramBot__Token=8510424881:AAHfGWJID1fMeUtZ-6RpPkd37WNF5F7LKsM
-      - TelegramBot__WebAppUrl=https://reality-faq-socket-interviews.trycloudflare.com
+      - TelegramBot__WebAppUrl=https://scientists-window-while-geographic.trycloudflare.com
     extra_hosts:
       - "host.docker.internal:host-gateway"
     labels:
@@ -52,13 +52,13 @@ services:
       - bingo-network
 
   bingo-frontend:
-    image: bingo-frontend:1.0.15
+    image: bingo-frontend:1.0.18
     build:
       context: Bingo App
       dockerfile: Dockerfile
     container_name: bingo-frontend
     environment:
-      - API_URL=https://reality-faq-socket-interviews.trycloudflare.com/api
+      - API_URL=https://scientists-window-while-geographic.trycloudflare.com/api
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.bingo-frontend.rule=PathPrefix(`/`)"
