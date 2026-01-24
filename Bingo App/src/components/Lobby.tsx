@@ -49,8 +49,11 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         return (obj as any).numbers ?? (obj as any).Numbers ?? [];
     };
 
+    // 1. UPDATED: Modified SignalR logic
     const startSignalR = async (rId: number) => {
-        if (connectionRef.current) await connectionRef.current.stop();
+        if (connectionRef.current) {
+            await connectionRef.current.stop();
+        }
 
         const connection = new signalR.HubConnectionBuilder()
             .withUrl("/bingohub")
@@ -62,9 +65,10 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             dispatch(syncLockedCards({ cardId: Number(cardId), isLocked }));
         });
 
-        // Fallback: If the user stays in lobby and game starts, move them
+        // CHANGED: Instead of forcing onEnterGame, we refresh the lobby to get the next room
         connection.on("GameStarted", (startedRoomId: number) => {
-            onEnterGame(startedRoomId);
+            console.log(`Room ${startedRoomId} started. Fetching new lobby...`);
+            initLobby();
         });
 
         try {
@@ -74,11 +78,16 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         } catch (err) { console.error(err); }
     };
 
+    // 2. UPDATED: initLobby now resets state to ensure a clean transition
     const initLobby = useCallback(async () => {
         try {
+            // Optional: dispatch(resetLobby()) here if you want to clear card selections immediately
             const res = await joinAutoLobby(userId, wager);
             if (res?.data) {
                 const rId = res.data.roomId;
+
+                // If the API returned the same room that just started (race condition), 
+                // you might want to add a retry logic, but usually the backend handles this.
                 setScheduledStartTime(res.data.scheduledStartTime);
                 dispatch(setLobbyData({ roomId: rId, wager }));
 
@@ -90,6 +99,9 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                 if (myCardsRes.data) {
                     const existing = myCardsRes.data.map((c: any) => c.masterCard || c.MasterCard);
                     dispatch(updateMyCards(existing.filter(Boolean)));
+                } else {
+                    // Clear cards if we are in a new room where we haven't picked yet
+                    dispatch(updateMyCards([]));
                 }
 
                 if (takenRes.data) {
@@ -112,6 +124,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         };
     }, [initLobby]);
 
+    // 3. UPDATED: Countdown logic
     useEffect(() => {
         if (!scheduledStartTime) return;
         const interval = setInterval(() => {
@@ -119,9 +132,11 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             const start = new Date(scheduledStartTime).getTime();
             const diff = Math.max(0, Math.floor((start - now) / 1000));
             setCountdown(diff);
+
             if (diff <= 0) {
                 clearInterval(interval);
-                // If countdown hits 0 and we are still here, refresh lobby room
+                // When timer hits 0, we don't join, we just refresh the lobby 
+                // to find the NEXT available room for this wager.
                 initLobby();
             }
         }, 1000);
@@ -129,7 +144,9 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     }, [scheduledStartTime, initLobby]);
 
     const handleToggleCard = async (cardId: number) => {
-        if (!roomId || countdown <= 3) return;
+        // Prevent selection if timer is almost out to avoid race conditions
+        if (!roomId || countdown <= 1) return;
+
         const isMine = myCards.some((c: MasterCard) => getCardId(c) === cardId);
         try {
             if (!isMine && myCards.length >= 2) {
@@ -146,9 +163,8 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     };
 
     const handleConfirmJoin = () => {
-        if (!roomId) return;
+        if (!roomId || countdown <= 0) return; // Can't join if game already started
         setIsJoining(true);
-        // Small delay for UI feel, then redirect immediately to GameRoom
         setTimeout(() => {
             setIsJoining(false);
             onEnterGame(roomId);
