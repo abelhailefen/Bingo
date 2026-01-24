@@ -25,6 +25,23 @@ public class RoomsController : ControllerBase
     {
         _mediator = mediator;
     }
+    [HttpPost("{roomId}/claim")]
+    public async Task<IActionResult> ClaimBingo(long roomId, [FromBody] ClaimBingoRequest request)
+    {
+        // 1. Map the URL parameter and Body parameter to the MediatR Command
+        var command = new ClaimBingoCommand(roomId, request.UserId);
+
+        // 2. Send to the Handler
+        var result = await _mediator.Send(command);
+
+        // 3. Return appropriate response
+        if (result.IsFailed)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
     [HttpPost("{roomId}/leave")]
     public async Task<ActionResult<Response<bool>>> LeaveRoom(long roomId, [FromBody] LeaveRoomRequest request)
     {

@@ -37,7 +37,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=host.docker.internal;Port=5432;Database=bingo;Username=postgres;Password=
       - TelegramBot__Token=8510424881:AAHfGWJID1fMeUtZ-6RpPkd37WNF5F7LKsM
-      - TelegramBot__WebAppUrl=https://scientists-window-while-geographic.trycloudflare.com
+      - TelegramBot__WebAppUrl=https://poems-pumps-archive-pensions.trycloudflare.com
     extra_hosts:
       - "host.docker.internal:host-gateway"
     labels:
@@ -58,7 +58,7 @@ services:
       dockerfile: Dockerfile
     container_name: bingo-frontend
     environment:
-      - API_URL=https://scientists-window-while-geographic.trycloudflare.com/api
+      - API_URL=https://poems-pumps-archive-pensions.trycloudflare.com/api
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.bingo-frontend.rule=PathPrefix(`/`)"
