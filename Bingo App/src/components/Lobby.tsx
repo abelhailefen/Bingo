@@ -34,6 +34,9 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     const [scheduledStartTime, setScheduledStartTime] = useState<string | null>(null);
     const [isJoining, setIsJoining] = useState(false);
 
+    // NEW: State for card range pagination (0 for 1-100, 1 for 101-200)
+    const [cardPage, setCardPage] = useState<number>(0);
+
     const { roomId, myCards, lockedCards } = useSelector((state: RootState) => state.game);
 
     useEffect(() => {
@@ -49,7 +52,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         return (obj as any).numbers ?? (obj as any).Numbers ?? [];
     };
 
-    // 1. UPDATED: Modified SignalR logic
     const startSignalR = async (rId: number) => {
         if (connectionRef.current) {
             await connectionRef.current.stop();
@@ -65,7 +67,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             dispatch(syncLockedCards({ cardId: Number(cardId), isLocked }));
         });
 
-        // CHANGED: Instead of forcing onEnterGame, we refresh the lobby to get the next room
         connection.on("GameStarted", (startedRoomId: number) => {
             console.log(`Room ${startedRoomId} started. Fetching new lobby...`);
             initLobby();
@@ -78,16 +79,11 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         } catch (err) { console.error(err); }
     };
 
-    // 2. UPDATED: initLobby now resets state to ensure a clean transition
     const initLobby = useCallback(async () => {
         try {
-            // Optional: dispatch(resetLobby()) here if you want to clear card selections immediately
             const res = await joinAutoLobby(userId, wager);
             if (res?.data) {
                 const rId = res.data.roomId;
-
-                // If the API returned the same room that just started (race condition), 
-                // you might want to add a retry logic, but usually the backend handles this.
                 setScheduledStartTime(res.data.scheduledStartTime);
                 dispatch(setLobbyData({ roomId: rId, wager }));
 
@@ -100,7 +96,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                     const existing = myCardsRes.data.map((c: any) => c.masterCard || c.MasterCard);
                     dispatch(updateMyCards(existing.filter(Boolean)));
                 } else {
-                    // Clear cards if we are in a new room where we haven't picked yet
                     dispatch(updateMyCards([]));
                 }
 
@@ -124,7 +119,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         };
     }, [initLobby]);
 
-    // 3. UPDATED: Countdown logic
     useEffect(() => {
         if (!scheduledStartTime) return;
         const interval = setInterval(() => {
@@ -135,8 +129,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
             if (diff <= 0) {
                 clearInterval(interval);
-                // When timer hits 0, we don't join, we just refresh the lobby 
-                // to find the NEXT available room for this wager.
                 initLobby();
             }
         }, 1000);
@@ -144,7 +136,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     }, [scheduledStartTime, initLobby]);
 
     const handleToggleCard = async (cardId: number) => {
-        // Prevent selection if timer is almost out to avoid race conditions
         if (!roomId || countdown <= 1) return;
 
         const isMine = myCards.some((c: MasterCard) => getCardId(c) === cardId);
@@ -163,7 +154,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     };
 
     const handleConfirmJoin = () => {
-        if (!roomId || countdown <= 0) return; // Can't join if game already started
+        if (!roomId || countdown <= 0) return;
         setIsJoining(true);
         setTimeout(() => {
             setIsJoining(false);
@@ -212,13 +203,29 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             </div>
 
             <div className="flex-1 p-4 overflow-y-auto">
-                <div className="text-center mb-6">
-                    <p className="text-indigo-400 text-xs uppercase font-black tracking-[0.2em]">Select cards to join the game</p>
+                <div className="text-center mb-4">
+                    <p className="text-indigo-400 text-xs uppercase font-black tracking-[0.2em] mb-4">Select cards to join the game</p>
+
+                    {/* Range Selector Tabs */}
+                    <div className="flex justify-center gap-2 mb-2">
+                        <button
+                            onClick={() => setCardPage(0)}
+                            className={`px-4 py-2 rounded-full text-[10px] font-black transition-all ${cardPage === 0 ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-indigo-950/50 text-indigo-400 border border-white/5'}`}
+                        >
+                            1 - 100
+                        </button>
+                        <button
+                            onClick={() => setCardPage(1)}
+                            className={`px-4 py-2 rounded-full text-[10px] font-black transition-all ${cardPage === 1 ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'bg-indigo-950/50 text-indigo-400 border border-white/5'}`}
+                        >
+                            101 - 200
+                        </button>
+                    </div>
                 </div>
 
                 {/* Card Selection Grid */}
                 <div className="grid grid-cols-10 gap-1.5 max-w-sm mx-auto mb-8 bg-indigo-950/30 p-2 rounded-xl border border-white/5">
-                    {Array.from({ length: 100 }, (_, i) => i + 1).map(id => {
+                    {Array.from({ length: 100 }, (_, i) => (cardPage * 100) + i + 1).map(id => {
                         const isMine = myCards.some((c: MasterCard) => getCardId(c) === id);
                         const isTaken = lockedCards.includes(id);
                         return (
