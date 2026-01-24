@@ -62,7 +62,7 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                     CardPrice = request.CardPrice, // Use requested price here!
                     Pattern = WinPatternEnum.Line,
                     CreatedAt = DateTime.UtcNow,
-                    ScheduledStartTime = DateTime.UtcNow.AddMinutes(2)
+                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(30)
                 };
                 await _repository.AddAsync(room);
                 await _repository.SaveChanges();

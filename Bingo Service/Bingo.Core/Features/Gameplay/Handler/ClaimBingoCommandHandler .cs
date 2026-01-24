@@ -30,17 +30,37 @@ namespace Bingo.Core.Features.Gameplay.Handler
         public async Task<Response<bool>> Handle(ClaimBingoCommand request, CancellationToken cancellationToken)
         {
             var room = await _repository.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
+            if (room == null) return Response<bool>.Error("Room not found.");
+            if (room.Status != RoomStatusEnum.InProgress) return Response<bool>.Error("Game is not currently active.");
+
             var calledNumbers = (await _repository.FindAsync<CalledNumber>(cn => cn.RoomId == request.RoomId))
                                 .Select(cn => cn.Number).ToList();
 
-            // Get all cards for this user in this room
-            var userCards = await _repository.GetUserCardsInRoomAsync(request.RoomId, request.UserId);
-            var winningCard = userCards.FirstOrDefault(card =>
-                WinVerificationService.IsValidWin(card.MasterCard.Numbers.OrderBy(n => n.PositionRow).ThenBy(n => n.PositionCol)
-                .Select(n => n.Number ?? 0).ToList(), calledNumbers));
+            // FIX 1: Corrected Argument Order (UserId, RoomId)
+            var userCards = await _repository.GetUserCardsInRoomAsync(request.UserId, request.RoomId);
+
+            if (userCards == null || !userCards.Any())
+                return Response<bool>.Error("No cards found for this user in this room.");
+
+            Card winningCard = null;
+            foreach (var card in userCards)
+            {
+                // Ensure we have exactly 25 numbers ordered correctly
+                var flatNumbers = card.MasterCard.Numbers
+                    .OrderBy(n => n.PositionRow)
+                    .ThenBy(n => n.PositionCol)
+                    .Select(n => n.Number ?? 0)
+                    .ToList();
+
+                if (WinVerificationService.IsValidWin(flatNumbers, calledNumbers))
+                {
+                    winningCard = card;
+                    break;
+                }
+            }
 
             if (winningCard == null)
-                return Response<bool>.Error("No valid Bingo found on your cards.");
+                return Response<bool>.Error("Wait! Your card doesn't have a Bingo yet. Keep playing!");
 
             // 1. Record the Win
             var win = new Win
@@ -49,17 +69,15 @@ namespace Bingo.Core.Features.Gameplay.Handler
                 UserId = request.UserId,
                 CardId = winningCard.CardId,
                 WinType = WinTypeEnum.Line,
-                Prize = room.CardPrice * room.MaxPlayers * 0.8m, // Example prize logic
+                Prize = room.CardPrice * room.MaxPlayers * 0.8m,
                 Verified = true
             };
-            await _repository.AddAsync(win);
 
-            // 2. End the Game
+            await _repository.AddAsync(win);
             room.Status = RoomStatusEnum.Completed;
             await _repository.UpdateAsync(room);
             await _repository.SaveChanges();
 
-            // 3. Broadcast to all users
             var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
             await _hubContext.Clients.Group(request.RoomId.ToString())
                 .WinClaimed(request.RoomId, user.Username, "LINE BINGO", win.Prize);

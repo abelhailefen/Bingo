@@ -10,11 +10,13 @@ namespace Bingo.Core.Services
     {
         public static bool IsValidWin(List<int> cardNumbers, List<int> calledNumbers)
         {
-            // Add the free space (null/0) to called numbers for checking
-            var drawn = calledNumbers.ToHashSet();
-            drawn.Add(0); // Assuming 0 or null is the middle star
+            if (cardNumbers.Count != 25) return false;
 
-            // Helper to get number at specific row/col (1-indexed)
+            var drawn = calledNumbers.ToHashSet();
+            // Index 12 is the 13th element (3rd row, 3rd column)
+            int freeSpaceValue = cardNumbers[12];
+            drawn.Add(freeSpaceValue);
+
             int GetNum(int r, int c) => cardNumbers[(r - 1) * 5 + (c - 1)];
 
             // Check Rows
