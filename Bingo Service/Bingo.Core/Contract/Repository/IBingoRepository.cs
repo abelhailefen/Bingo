@@ -18,6 +18,10 @@ public interface IBingoRepository
     Task<Room> GetRoomById (long roomId);
     Task<List<int>> GetTakenCardIdsAsync(long roomId);
     Task<List<long>> GetTakenCards(long roomId, CancellationToken ct);
+    Task<Room?> GetUpcomingOrActiveRoom(decimal cardPrice, CancellationToken ct);
+    Task<bool> IsGameInProgress(decimal cardPrice);
+    Task<bool> AnyAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class;
+
     // Removed: MarkNumberOnCardAsync (Marking is now calculated on-the-fly)
 
     // Updated: Types changed to int to match Entity and DTOs

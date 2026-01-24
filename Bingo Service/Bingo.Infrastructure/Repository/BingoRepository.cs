@@ -209,7 +209,21 @@ public class BingoRepository : IBingoRepository
             .Select(c => (int)c.MasterCardId)
             .ToListAsync();
     }
-  
+    public async Task<Room?> GetUpcomingOrActiveRoom(decimal cardPrice, CancellationToken ct)
+    {
+        // Look for a room that isn't finished yet for this specific price
+        return await _context.Rooms
+            .Where(r => r.CardPrice == cardPrice &&
+                       (r.Status == RoomStatusEnum.Waiting || r.Status == RoomStatusEnum.InProgress))
+            .OrderByDescending(r => r.Status) // Prioritize Waiting over InProgress for joining
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<bool> IsGameInProgress(decimal cardPrice)
+    {
+        return await _context.Rooms.AnyAsync(r =>
+            r.CardPrice == cardPrice && r.Status == RoomStatusEnum.InProgress);
+    }
     /* ============================================================
      * Generic DB Operations
      * ============================================================ */
@@ -279,5 +293,9 @@ public class BingoRepository : IBingoRepository
         //DbContext.Entry(entity).Property("UpdatedOn").CurrentValue = DateTime.Now;
         _context.Entry(entity).State = EntityState.Modified;
         _context.Set<TEntity>().Update(entity);
+    }
+    public async Task<bool> AnyAsync<TEntity>(Expression<Func<TEntity, bool>> criteria) where TEntity : class
+    {
+        return await _context.Set<TEntity>().AnyAsync(criteria);
     }
 }

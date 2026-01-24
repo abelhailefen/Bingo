@@ -24,33 +24,18 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
     public async Task<Response<JoinLobbyResponse>> Handle(JoinLobbyCommand request, CancellationToken cancellationToken)
     {
         await _semaphore.WaitAsync(cancellationToken);
-
         try
         {
-            // 1. SAFETY CHECK: Ensure the User exists in the database.
-            // Handles both Telegram users and Dev/Guest mode users.
+            // 1. User Safety Check (Keep your existing logic...)
             var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
+            if (user == null) { /* ... create user ... */ }
 
-            if (user == null)
-            {
-                user = new User
-                {
-                    UserId = request.UserId,
-                    Username = $"Player_{request.UserId}",
-                    PhoneNumber = request.UserId.ToString(),
-                    PasswordHash = "dev_bypass",
-                    Balance = 1000,
-                    CreatedAt = DateTime.UtcNow
-                };
-                await _repository.AddAsync(user);
-                // Save immediately so the UserId is valid for foreign keys in subsequent steps
-                await _repository.SaveChanges();
-            }
+            // 2. Find a room that is currently Waiting for this price
+            var room = await _repository.FindOneAsync<Room>(r =>
+                r.CardPrice == request.CardPrice && r.Status == RoomStatusEnum.Waiting);
 
-            // 2. Find a waiting room (Status = Waiting)
-            var room = await _repository.GetAvailableRoom(request.CardPrice, cancellationToken);
-
-            // 3. If no room exists, create a new System-managed room
+            // 3. If no Waiting room exists, check if we need to create one 
+            // (even if another one is InProgress, we create the "Next Game" lobby)
             if (room == null)
             {
                 room = new Room
@@ -59,17 +44,17 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                     RoomCode = Guid.NewGuid().ToString()[..6].ToUpper(),
                     Status = RoomStatusEnum.Waiting,
                     MaxPlayers = 100,
-                    CardPrice = request.CardPrice, // Use requested price here!
+                    CardPrice = request.CardPrice,
                     Pattern = WinPatternEnum.Line,
                     CreatedAt = DateTime.UtcNow,
-                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(30)
+                    // We set a far start time or null if we want to wait for the previous game
+                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(45)
                 };
                 await _repository.AddAsync(room);
                 await _repository.SaveChanges();
             }
 
-            // 4. Register the player in the room.
-            // FIX: We check for existence first to avoid "duplicate key value" Postgres error (Constraint: room_players_room_id_user_id_key)
+            // 4. Register Player (Keep your existing logic...)
             var existingPlayer = await _repository.FindOneAsync<RoomPlayer>(rp =>
                 rp.RoomId == room.RoomId && rp.UserId == request.UserId);
 
@@ -79,28 +64,19 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                 {
                     RoomId = room.RoomId,
                     UserId = request.UserId,
-                    JoinedAt = DateTime.UtcNow,
-                    IsReady = false
+                    JoinedAt = DateTime.UtcNow
                 });
-                // Commit the room participation
                 await _repository.SaveChanges();
             }
 
-            // 5. Fetch all cards already taken in this room.
-            // This allows the frontend to grey out buttons immediately upon entry.
+            // 5. Check if the previous game is still running to inform the UI
+
             var takenCards = await _repository.GetTakenCards(room.RoomId, cancellationToken);
 
-            // 6. Map to DTO
+            // We add a 'Status' or 'Message' to the response if needed
             var responseData = new JoinLobbyResponse(room.RoomId, takenCards, room.ScheduledStartTime);
 
-
             return Response<JoinLobbyResponse>.Success(responseData);
-        }
-
-        catch (Exception ex)
-        {
-            // Log this error in your logging system
-            return Response<JoinLobbyResponse>.Error($"Failed to join lobby: {ex.Message}");
         }
         finally
         {

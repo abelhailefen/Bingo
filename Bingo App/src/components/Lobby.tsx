@@ -34,6 +34,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     const [isJoining, setIsJoining] = useState(false); 
     const [cardPage, setCardPage] = useState<number>(0);
     const isTransitioningToGame = useRef(false);
+    const [serverMessage, setServerMessage] = useState<string | null>(null);
 
     const { roomId, myCards, lockedCards } = useSelector((state: RootState) => state.game);
 
@@ -61,27 +62,54 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     };
 
     const startSignalR = async (rId: number) => {
-        if (connectionRef.current) await connectionRef.current.stop();
+        // 1. Clean up any existing connection
+        if (connectionRef.current) {
+            await connectionRef.current.stop();
+            connectionRef.current = null;
+        }
 
         const connection = new signalR.HubConnectionBuilder()
             .withUrl("/bingohub")
             .withAutomaticReconnect()
             .build();
 
+        // Event: Another player picked/dropped a card
         connection.on("CardSelectionChanged", (cardId: number, isLocked: boolean, senderId: number) => {
             if (senderId === userId) return;
             dispatch(syncLockedCards({ cardId: Number(cardId), isLocked }));
         });
 
+        // Event: The BackgroundService pushed the start time because a game is still running
+        connection.on("WaitingForPreviousGame", (waitingRoomId: number) => {
+            if (Number(waitingRoomId) === roomIdRef.current) {
+                setServerMessage("Waiting for previous game to finish...");
+                // Optionally clear message after a few seconds
+                setTimeout(() => setServerMessage(null), 8000);
+            }
+        });
+
+        // Event: The game is officially starting!
         connection.on("GameStarted", (startedRoomId: number) => {
-            if (Number(startedRoomId) === roomIdRef.current) initLobby();
+            if (Number(startedRoomId) === roomIdRef.current) {
+                console.log("Game is starting, transitioning...");
+
+                // Prevent the 'leaveLobby' logic in useEffect cleanup from firing
+                isTransitioningToGame.current = true;
+
+                // Trigger the navigation to the Game screen
+                onEnterGame(Number(startedRoomId));
+            }
         });
 
         try {
             await connection.start();
+            // Join the specific room group so we only get events for this lobby
             await connection.invoke("JoinRoomGroup", rId.toString());
             connectionRef.current = connection;
-        } catch (err) { console.error("SignalR Lobby Error:", err); }
+            console.log(`SignalR connected to room ${rId}`);
+        } catch (err) {
+            console.error("SignalR Lobby Error:", err);
+        }
     };
 
     const initLobby = useCallback(async () => {
@@ -169,19 +197,44 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     return (
         <div className="min-h-screen bg-[#0f172a] text-white flex flex-col">
             <div className="grid grid-cols-3 gap-3 p-4 bg-indigo-900/40 border-b border-white/5">
+                {/* Room ID Box */}
                 <div className="bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg">
-                    <span className="text-[10px] font-bold text-indigo-400 uppercase">Room</span>
+                    <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter">Room</span>
                     <span className="text-lg font-black">{roomId ?? '--'}</span>
                 </div>
+
+                {/* Stake Box */}
                 <div className="bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg">
-                    <span className="text-[10px] font-bold text-indigo-400 uppercase">Stake</span>
+                    <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter">Stake</span>
                     <span className="text-lg font-black">{wager}</span>
                 </div>
-                <div className="bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg border-2 border-orange-500">
-                    <span className="text-[10px] font-bold text-orange-400 uppercase">Starts In</span>
-                    <span className={`text-lg font-black ${countdown < 10 ? 'text-red-600 animate-pulse' : 'text-indigo-600'}`}>
-                        {countdown}s
+
+                {/* Dynamic Status/Countdown Box */}
+                <div className={`bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg border-2 transition-all duration-500 ${serverMessage || countdown < 10 ? 'border-orange-500' : 'border-transparent'
+                    }`}>
+                    <span className="text-[10px] font-bold text-orange-400 uppercase tracking-tighter">
+                        {serverMessage ? 'Status' : 'Starts In'}
                     </span>
+
+                    <div className="flex items-center justify-center h-full">
+                        {serverMessage ? (
+                            /* Show this when the RoomManagerService says a previous game is busy */
+                            <div className="flex flex-col items-center leading-none animate-pulse">
+                                <span className="text-[9px] font-black text-orange-600 uppercase text-center">
+                                    Waiting for
+                                </span>
+                                <span className="text-[9px] font-black text-orange-600 uppercase text-center">
+                                    Prev Game
+                                </span>
+                            </div>
+                        ) : (
+                            /* Standard Countdown display */
+                            <span className={`text-lg font-black transition-colors ${countdown < 10 ? 'text-red-600 animate-pulse' : 'text-indigo-600'
+                                }`}>
+                                {countdown}s
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 
