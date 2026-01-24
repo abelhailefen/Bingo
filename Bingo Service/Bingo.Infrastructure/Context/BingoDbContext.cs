@@ -354,6 +354,45 @@ public class BingoDbContext : DbContext
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId);
         });
 
-       
+        modelBuilder.Entity<Payment>(entity =>
+        {
+            entity.ToTable("payments");
+
+            entity.HasKey(e => e.PaymentId);
+
+            entity.Property(e => e.PaymentId)
+                .HasColumnName("payment_id")
+                .UseIdentityAlwaysColumn();
+
+            entity.Property(e => e.UserId)
+                .HasColumnName("user_id")
+                .IsRequired();
+
+            entity.Property(e => e.TransactionReference)
+                .HasColumnName("transaction_reference")
+                .HasMaxLength(100)
+                .IsRequired();
+
+            entity.HasIndex(e => e.TransactionReference).IsUnique();
+
+            entity.Property(e => e.Amount)
+                .HasColumnName("amount")
+                .HasPrecision(10, 2)
+                .IsRequired();
+
+            entity.Property(e => e.Provider)
+                .HasColumnName("provider")
+                .HasConversion<int>()
+                .IsRequired();
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.HasOne(e => e.User)
+                .WithMany() // Or add a collection to User entity if preferred
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

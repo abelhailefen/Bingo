@@ -1,5 +1,7 @@
 ﻿using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities.Enums;
+using Bingo.Core.Features.PaymentService.Contract.Service;
+using Bingo.Core.Features.PaymentService.Handler.Service;
 using Bingo.Infrastructure.Context;
 using Bingo.Infrastructure.Repository;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +39,8 @@ namespace Bingo.Infrastructure.Dependency
             });
 
             services.AddScoped<IBingoRepository, BingoRepository>();
+            services.AddScoped<IPaymentService, PaymentService>();
+            services.AddHttpClient();
             return services;
         }
 
