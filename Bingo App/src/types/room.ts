@@ -21,6 +21,7 @@ export interface Room {
     roomId: number;
     roomCode: string;
     name: string;
+    cardPrice: number;  
     scheduledStartTime: Date;
     status: RoomStatus;
     calledNumbers: { number: number }[];

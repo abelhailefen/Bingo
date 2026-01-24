@@ -1,7 +1,9 @@
 ﻿using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities;
 using Bingo.Core.Entities.Enums;
+using Bingo.Core.Features.Gameplay.Contract.Command;
 using Bingo.Core.Hubs;
+using MediatR;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -31,28 +33,31 @@ namespace Bingo.Core.Services
                 using (var scope = _serviceProvider.CreateScope())
                 {
                     var repo = scope.ServiceProvider.GetRequiredService<IBingoRepository>();
+                    var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-                    // 1. Find rooms that should have started
-                    var expiredRooms = await repo.FindAsync<Room>(r =>
-                        r.Status == RoomStatusEnum.Waiting &&
-                        r.ScheduledStartTime <= DateTime.UtcNow);
+                    // 1. Start pending rooms
+                    var pendingRooms = await repo.FindAsync<Room>(r =>
+                        r.Status == RoomStatusEnum.Waiting && r.ScheduledStartTime <= DateTime.UtcNow);
 
-                    foreach (var room in expiredRooms)
+                    foreach (var room in pendingRooms)
                     {
-                        // 2. Change status to InProgress
                         room.Status = RoomStatusEnum.InProgress;
                         room.StartedAt = DateTime.UtcNow;
-
                         await repo.UpdateAsync(room);
                         await repo.SaveChanges();
+                        await _hubContext.Clients.Group(room.RoomId.ToString()).SendAsync("GameStarted", room.RoomId);
+                    }
 
-                        // 3. Notify everyone in that Room via SignalR
-                        await _hubContext.Clients.Group(room.RoomId.ToString())
-                            .SendAsync("GameStarted", room.RoomId);
+                    // 2. Call numbers for active rooms
+                    var activeRooms = await repo.FindAsync<Room>(r => r.Status == RoomStatusEnum.InProgress);
+                    foreach (var room in activeRooms)
+                    {
+                        // Simple logic: call a number every 5 seconds (roughly)
+                        // In a production app, you'd track the 'LastCalledAt' property in the Room entity
+                        await mediator.Send(new CallNumberCommand(room.RoomId));
                     }
                 }
-
-                await Task.Delay(1000, stoppingToken); // Check every second
+                await Task.Delay(5000, stoppingToken);
             }
         }
     }
