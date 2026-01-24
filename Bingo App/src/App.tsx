@@ -23,6 +23,7 @@ const App = () => {
                     if (response.success && response.data) {
                         setAuthToken(response.data);
                         localStorage.setItem('bingo_token', response.data);
+                        // Extracting ID from token or using telegram user object
                         const idMatch = response.data.match(/\d+$/);
                         const id = idMatch ? parseInt(idMatch[0]) : telegram.initDataUnsafe?.user?.id;
                         setUserId(id || 999);
@@ -33,6 +34,7 @@ const App = () => {
                     console.error('Auth API Error:', error);
                 }
             }
+            // Local development fallback
             const fallbackId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || 12345;
             setUserId(fallbackId);
             setView('wager');
@@ -47,11 +49,12 @@ const App = () => {
 
     const handleEnterGame = (roomId: number) => {
         setActiveRoomId(roomId);
-        setView('game'); // Direct transition to GameRoom
+        setView('game');
     };
 
     const handleBackToWager = () => {
         setWager(null);
+        setActiveRoomId(null);
         setView('wager');
     };
 
@@ -81,7 +84,7 @@ const App = () => {
                 <GameRoom
                     roomId={activeRoomId}
                     userId={userId}
-                    onLeave={() => setView('lobby')}
+                    onLeave={handleBackToWager} // Redirects to Wager Selection
                 />
             )}
         </div>

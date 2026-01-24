@@ -19,10 +19,16 @@ export const gameSlice = createSlice({
     name: 'game',
     initialState,
     reducers: {
-        setLobbyData: (state, action: PayloadAction<{ roomId: number; wager: number }>) => {
+        // Example inside gameSlice.ts
+        setLobbyData: (state, action) => {
             state.roomId = action.payload.roomId;
             state.wager = action.payload.wager;
-        },
+            // Clear cards if the room has changed
+            if (action.payload.roomId === null) {
+                state.myCards = [];
+                state.lockedCards = [];
+            }
+        }, 
         updateMyCards: (state, action: PayloadAction<MasterCard[]>) => {
             state.myCards = action.payload;
         },

@@ -7,8 +7,6 @@ using Bingo.Core.Hubs;
 using Bingo.Core.Models;
 using MediatR;
 using Microsoft.AspNetCore.SignalR;
-using System.Linq;
-
 
 namespace Bingo.Core.Features.Gameplay.Handler;
 
@@ -26,40 +24,66 @@ public class CallNumberCommandHandler : IRequestHandler<CallNumberCommand, Respo
 
     public async Task<Response<int>> Handle(CallNumberCommand request, CancellationToken cancellationToken)
     {
-        // 1. Get room and existing numbers
+        // 1. Get room and validate status
         var room = await _repository.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
         if (room == null || room.Status != RoomStatusEnum.InProgress)
             return Response<int>.Error("Room is not in progress.");
 
-        var alreadyCalled = await _repository.FindAsync<CalledNumber>(cn => cn.RoomId == request.RoomId);
-        var calledValues = alreadyCalled.Select(c => c.Number).ToHashSet();
+        // 2. Get existing numbers to ensure uniqueness
+        var alreadyCalledList = await _repository.FindAsync<CalledNumber>(cn => cn.RoomId == request.RoomId);
+        var calledValues = alreadyCalledList.Select(c => c.Number).ToHashSet();
 
         if (calledValues.Count >= 75)
+        {
+            await EndGameAsCancelled(room, "All numbers exhausted.");
             return Response<int>.Error("All numbers have been called.");
+        }
 
-        // 2. Pick a random number not yet called
+        // 3. Pick a random number (1-75)
         int nextNumber;
         do
         {
             nextNumber = _random.Next(1, 76);
         } while (calledValues.Contains(nextNumber));
 
-        // 3. Save to Database
+        // 4. Persist the called number
         var calledNumber = new CalledNumber
         {
             RoomId = (int)request.RoomId,
             Number = nextNumber,
             CalledAt = DateTime.UtcNow
         };
-
         await _repository.AddAsync(calledNumber);
+
+        // 5. Check if this is the final possible number
+        bool isLastNumber = (calledValues.Count + 1) >= 75;
+        if (isLastNumber)
+        {
+            room.Status = RoomStatusEnum.Cancelled;
+            await _repository.UpdateAsync(room);
+        }
+
         await _repository.SaveChanges();
 
-        // 4. Broadcast via SignalR
-        // Note: Using the typed client interface defined in your contract
+        // 6. Broadcast the number to the group
         await _hubContext.Clients.Group(request.RoomId.ToString())
             .NumberDrawn(request.RoomId, nextNumber);
 
+        // 7. Broadcast Game Over if no more numbers are left
+        if (isLastNumber)
+        {
+            await _hubContext.Clients.Group(request.RoomId.ToString())
+                .GameEnded(request.RoomId, "Maximum calls reached. No winner.");
+        }
+
         return Response<int>.Success(nextNumber);
+    }
+
+    private async Task EndGameAsCancelled(Room room, string reason)
+    {
+        room.Status = RoomStatusEnum.Cancelled;
+        await _repository.UpdateAsync(room);
+        await _repository.SaveChanges();
+        await _hubContext.Clients.Group(room.RoomId.ToString()).GameEnded(room.RoomId, reason);
     }
 }

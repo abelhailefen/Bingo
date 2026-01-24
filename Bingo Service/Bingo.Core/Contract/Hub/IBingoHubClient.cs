@@ -16,5 +16,7 @@ namespace Bingo.Core.Contract.Hub
         Task GameEnded(long roomId);
         Task CardSelectionChanged(int masterCardId, bool isLocked, long userId);
         Task PlayerCountUpdated(int count);
+        Task GameEnded(long roomId, string message); // Add this
+
     }
 }

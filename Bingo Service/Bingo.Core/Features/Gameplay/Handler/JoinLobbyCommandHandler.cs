@@ -20,24 +20,26 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
     {
         _repository = repository;
     }
-
     public async Task<Response<JoinLobbyResponse>> Handle(JoinLobbyCommand request, CancellationToken cancellationToken)
     {
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
-            // 1. User Safety Check (Keep your existing logic...)
-            var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
-            if (user == null) { /* ... create user ... */ }
-
-            // 2. Find a room that is currently Waiting for this price
+            // 1. Find the ONLY active waiting room for this price
             var room = await _repository.FindOneAsync<Room>(r =>
-                r.CardPrice == request.CardPrice && r.Status == RoomStatusEnum.Waiting);
+                r.CardPrice == request.CardPrice &&
+                r.Status == RoomStatusEnum.Waiting);
 
-            // 3. If no Waiting room exists, check if we need to create one 
-            // (even if another one is InProgress, we create the "Next Game" lobby)
+            // 2. If no Waiting room exists, check if there is one InProgress.
+            // If your business rule is "One game at a time", we only create a 
+            // new Waiting room if there isn't an InProgress one, OR we create 
+            // it as a "Queue" for the next game.
             if (room == null)
             {
+                // Optional: Check if an InProgress room exists to decide on ScheduledStartTime
+                var inProgressRoom = await _repository.FindOneAsync<Room>(r =>
+                    r.CardPrice == request.CardPrice && r.Status == RoomStatusEnum.InProgress);
+
                 room = new Room
                 {
                     Name = $"{request.CardPrice} Birr Public Room",
@@ -47,14 +49,15 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                     CardPrice = request.CardPrice,
                     Pattern = WinPatternEnum.Line,
                     CreatedAt = DateTime.UtcNow,
-                    // We set a far start time or null if we want to wait for the previous game
-                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(45)
+                    // If a game is running, set start time further out, else 30s
+                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(inProgressRoom != null ? 60 : 30)
                 };
                 await _repository.AddAsync(room);
                 await _repository.SaveChanges();
             }
 
-            // 4. Register Player (Keep your existing logic...)
+            // 3. IMPORTANT: Ensure the player is linked to THIS specific room.
+            // We check RoomId AND UserId to ensure we aren't looking at old Completed rooms.
             var existingPlayer = await _repository.FindOneAsync<RoomPlayer>(rp =>
                 rp.RoomId == room.RoomId && rp.UserId == request.UserId);
 
@@ -69,11 +72,7 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                 await _repository.SaveChanges();
             }
 
-            // 5. Check if the previous game is still running to inform the UI
-
             var takenCards = await _repository.GetTakenCards(room.RoomId, cancellationToken);
-
-            // We add a 'Status' or 'Message' to the response if needed
             var responseData = new JoinLobbyResponse(room.RoomId, takenCards, room.ScheduledStartTime);
 
             return Response<JoinLobbyResponse>.Success(responseData);
