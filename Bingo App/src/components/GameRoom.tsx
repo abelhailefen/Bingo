@@ -1,20 +1,33 @@
 ﻿import { useEffect, useState, useRef } from 'react';
 import * as signalR from '@microsoft/signalr';
 import { getRoom, getMyCards, claimBingo } from '../services/api';
+import { RoomStatus } from '../types/enums';
+import type { Room } from '../types/room';
 
 export const GameRoom = ({ roomId, userId, onLeave }: { roomId: number, userId: number, onLeave: () => void }) => {
     const [cards, setCards] = useState<any[]>([]);
+    const [roomData, setRoomData] = useState<Room | null>(null);
     const [drawnNumbers, setDrawnNumbers] = useState<number[]>([]);
     const [currentNumber, setCurrentNumber] = useState<{ letter: string, val: number } | null>(null);
+
+    // Timer States
+    const [timerSeconds, setTimerSeconds] = useState<number>(0);
+    const [isCountingUp, setIsCountingUp] = useState<boolean>(false);
+
     const connectionRef = useRef<signalR.HubConnection | null>(null);
 
-    // Helper to get letter (Solves TS6133 by using it in updateCurrentNumber)
     const getCallLetter = (n: number) => {
         if (n <= 15) return 'B';
         if (n <= 30) return 'I';
         if (n <= 45) return 'N';
         if (n <= 60) return 'G';
         return 'O';
+    };
+
+    const formatTime = (totalSeconds: number) => {
+        const mins = Math.floor(Math.abs(totalSeconds) / 60);
+        const secs = Math.abs(totalSeconds) % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
     const updateCurrentNumber = (num: number) => {
@@ -24,45 +37,73 @@ export const GameRoom = ({ roomId, userId, onLeave }: { roomId: number, userId: 
 
     useEffect(() => {
         const initGame = async () => {
-            const roomRes = await getRoom(roomId);
-            const cardRes = await getMyCards(roomId, userId);
+            try {
+                const [roomRes, cardRes] = await Promise.all([
+                    getRoom(roomId),
+                    getMyCards(roomId, userId)
+                ]);
 
-            if (roomRes.data) {
-                const called = roomRes.data.calledNumbers.map((n: any) => n.number);
-                setDrawnNumbers(called);
-                updateCurrentNumber(called[called.length - 1]);
-            }
-            if (cardRes.data) setCards(cardRes.data);
+                if (roomRes.data) {
+                    setRoomData(roomRes.data);
+                    const called = roomRes.data.calledNumbers.map((n: any) => n.number);
+                    setDrawnNumbers(called);
+                    if (called.length > 0) updateCurrentNumber(called[called.length - 1]);
+                }
+                if (cardRes.data) setCards(cardRes.data);
 
-            const connection = new signalR.HubConnectionBuilder()
-                .withUrl("/bingohub")
-                .withAutomaticReconnect()
-                .build();
+                const connection = new signalR.HubConnectionBuilder()
+                    .withUrl("/bingohub")
+                    .withAutomaticReconnect()
+                    .build();
 
-            connection.on("NewNumberCalled", (number: number) => {
-                setDrawnNumbers(prev => [...prev, number]);
-                updateCurrentNumber(number);
-                try { new Audio('/assets/pop.mp3').play(); } catch (e) { }
-            });
+                connection.on("NewNumberCalled", (number: number) => {
+                    setDrawnNumbers(prev => [...prev, number]);
+                    updateCurrentNumber(number);
+                    try { new Audio('/assets/pop.mp3').play(); } catch (e) { }
+                });
 
-            await connection.start();
-            await connection.invoke("JoinRoomGroup", roomId.toString());
-            connectionRef.current = connection;
+                connection.on("GameStarted", () => {
+                    setIsCountingUp(true);
+                    setTimerSeconds(0);
+                });
+
+                await connection.start();
+                await connection.invoke("JoinRoomGroup", roomId.toString());
+                connectionRef.current = connection;
+            } catch (err) { console.error(err); }
         };
 
         initGame();
         return () => { connectionRef.current?.stop(); };
     }, [roomId, userId]);
 
+    useEffect(() => {
+        if (!roomData?.scheduledStartTime) return;
+        const interval = setInterval(() => {
+            const now = new Date().getTime();
+            const start = new Date(roomData.scheduledStartTime).getTime();
+            if (roomData.status === RoomStatus.Waiting && now < start) {
+                const diff = Math.max(0, Math.floor((start - now) / 1000));
+                setTimerSeconds(diff);
+                setIsCountingUp(false);
+            } else {
+                setIsCountingUp(true);
+                setTimerSeconds(prev => (isCountingUp ? prev + 1 : 0));
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [roomData, isCountingUp]);
+
     const formatBackendCard = (numbers: any[]) => {
         const grid = Array(5).fill(null).map(() => Array(5).fill(null));
         numbers.forEach(n => {
-            grid[n.positionRow - 1][n.positionCol - 1] = n;
+            const r = (n.positionRow ?? n.PositionRow) - 1;
+            const c = (n.positionCol ?? n.PositionCol) - 1;
+            if (r >= 0 && r < 5 && c >= 0 && c < 5) grid[r][c] = n;
         });
         return grid;
     };
 
-    // Attached to button (Solves TS6133)
     const handleClaimBingo = async () => {
         const res = await claimBingo(roomId, userId);
         if (res.isFailed) alert(res.message);
@@ -70,30 +111,33 @@ export const GameRoom = ({ roomId, userId, onLeave }: { roomId: number, userId: 
     };
 
     return (
-        <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden font-sans">
-            {/* Header Stats Bar - Best Bingo Style */}
-            <div className="bg-indigo-900/50 p-2 grid grid-cols-5 text-center gap-1 text-[10px] uppercase font-bold border-b border-white/10">
-                <div className="flex flex-col"><span className="text-indigo-400 opacity-70">Game ID</span><span>{roomId}</span></div>
-                <div className="flex flex-col border-l border-white/10"><span className="text-indigo-400 opacity-70">Derash</span><span>696</span></div>
-                <div className="flex flex-col border-l border-white/10"><span className="text-indigo-400 opacity-70">Players</span><span>84</span></div>
-                <div className="flex flex-col border-l border-white/10"><span className="text-indigo-400 opacity-70">Bet</span><span>10</span></div>
-                <div className="flex flex-col border-l border-white/10"><span className="text-indigo-400 opacity-70">Call</span><span>{drawnNumbers.length}</span></div>
+        <div className="flex flex-col h-screen bg-[#0f172a] text-white overflow-hidden font-sans">
+            {/* Header Stats Bar */}
+            <div className="bg-[#1e293b] p-3 grid grid-cols-5 text-center gap-1 text-[11px] uppercase font-bold border-b border-white/5 shadow-lg">
+                <div className="flex flex-col"><span className="text-slate-400">Game ID</span><span>{roomId}</span></div>
+                <div className="flex flex-col border-l border-white/10">
+                    <span className="text-orange-400">{isCountingUp ? 'Duration' : 'Starts In'}</span>
+                    <span className={!isCountingUp && timerSeconds < 10 ? 'text-red-500 animate-pulse' : ''}>{formatTime(timerSeconds)}</span>
+                </div>
+                <div className="flex flex-col border-l border-white/10"><span className="text-slate-400">Players</span><span>84</span></div>
+                <div className="flex flex-col border-l border-white/10"><span className="text-slate-400">Bet</span><span>10</span></div>
+                <div className="flex flex-col border-l border-white/10"><span className="text-slate-400">Call</span><span>{drawnNumbers.length}</span></div>
             </div>
 
             <div className="flex flex-1 overflow-hidden">
-                {/* LEFT SIDEBAR: 1-75 Grid */}
-                <div className="w-40 bg-slate-900/40 border-r border-white/10 flex flex-col h-full shrink-0">
-                    <div className="grid grid-cols-5 p-1 text-center font-black text-indigo-400 border-b border-white/10 bg-slate-900/60">
-                        {['B', 'I', 'N', 'G', 'O'].map(l => <div key={l} className="text-xs">{l}</div>)}
+                {/* LEFT SIDEBAR: Vertical B-I-N-G-O Grid (1-75) */}
+                <div className="w-[140px] bg-[#1e1b4b] border-r border-indigo-500/30 flex flex-col h-full shrink-0">
+                    <div className="grid grid-cols-5 p-2 text-center font-black text-indigo-300 border-b border-indigo-500/30">
+                        {['B', 'I', 'N', 'G', 'O'].map(l => <div key={l} className="text-sm">{l}</div>)}
                     </div>
-                    <div className="flex-1 overflow-y-auto p-1 grid grid-cols-5 gap-0.5 custom-scrollbar">
-                        {Array.from({ length: 15 }).map((_, rIdx) => (
+                    <div className="flex-1 overflow-y-auto p-1.5 grid grid-cols-5 gap-1 custom-scrollbar">
+                        {Array.from({ length: 15 }).map((_, rowIndex) => (
                             [0, 15, 30, 45, 60].map(offset => {
-                                const num = rIdx + 1 + offset;
+                                const num = rowIndex + 1 + offset;
                                 const isDrawn = drawnNumbers.includes(num);
                                 return (
-                                    <div key={num} className={`aspect-square flex items-center justify-center rounded-sm text-[10px] font-bold transition-colors ${isDrawn ? 'bg-green-600 text-white shadow-[0_0_5px_rgba(22,163,74,0.5)]' : 'bg-slate-800/50 text-slate-500'
-                                        }`}>
+                                    <div key={num} className={`aspect-square flex items-center justify-center rounded-md text-[11px] font-bold transition-all shadow-sm
+                                        ${isDrawn ? 'bg-green-500 text-white border border-green-400' : 'bg-white/5 text-indigo-300/40 border border-white/5'}`}>
                                         {num}
                                     </div>
                                 );
@@ -103,62 +147,77 @@ export const GameRoom = ({ roomId, userId, onLeave }: { roomId: number, userId: 
                 </div>
 
                 {/* MAIN GAMEPLAY AREA */}
-                <div className="flex-1 flex flex-col p-3 overflow-y-auto bg-slate-950/50">
-                    {/* Current Call Section - Pill Style */}
-                    <div className="flex items-center justify-between mb-4 bg-indigo-600/20 p-3 rounded-2xl border border-indigo-500/30">
-                        <span className="text-lg italic font-black text-white/90">playing</span>
-                        <div className="flex items-center gap-3">
-                            <span className="text-[10px] uppercase font-bold text-indigo-300">Current Call</span>
-                            <div className="w-16 h-16 bg-slate-900 rounded-full flex flex-col items-center justify-center border-4 border-indigo-500 shadow-2xl">
-                                <span className="text-[10px] font-black leading-none text-indigo-400">{currentNumber?.letter}</span>
-                                <span className="text-2xl font-black leading-none">{currentNumber?.val || '--'}</span>
-                            </div>
+                <div className="flex-1 flex flex-col p-3 overflow-y-auto bg-[#020617] space-y-4">
+
+                    {/* Status Display */}
+                    <div className="bg-[#1e1b4b] rounded-xl p-2 px-4 flex justify-between items-center border border-indigo-500/20">
+                        <span className="text-indigo-400 font-bold italic tracking-wider">
+                            {isCountingUp ? 'playing' : 'waiting...'}
+                        </span>
+                        <div className="flex items-center space-x-2 text-indigo-300">
+                            <span className="text-xs font-bold uppercase">🔊 Voice</span>
                         </div>
                     </div>
 
-                    {/* Cards Stack */}
-                    <div className="space-y-6 pb-40">
+                    {/* Current Call Display */}
+                    <div className="bg-[#1e293b] rounded-2xl p-4 flex items-center justify-between border-2 border-indigo-500/20 shadow-2xl">
+                        <span className="text-indigo-200 text-lg font-bold uppercase tracking-widest">Current Call</span>
+                        <div className="bg-[#0f172a] h-16 w-32 rounded-full flex items-center justify-center border-2 border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)]">
+                            <span className="text-3xl font-black text-white">{currentNumber ? `${currentNumber.letter}-${currentNumber.val}` : '--'}</span>
+                        </div>
+                    </div>
+
+                    {/* Bingo Cards Stack */}
+                    <div className="flex flex-col space-y-6 pb-40">
                         {cards.map((card) => (
-                            <div key={card.cardId} className="bg-[#fefce8] p-3 rounded-xl shadow-2xl relative overflow-hidden">
-                                <div className="grid grid-cols-5 text-center font-black text-lg mb-1">
-                                    <span className="text-orange-500">B</span><span className="text-green-600">I</span>
-                                    <span className="text-blue-600">N</span><span className="text-red-500">G</span>
-                                    <span className="text-purple-600">O</span>
+                            <div key={card.cardId} className="bg-[#1e1b4b] p-3 rounded-2xl shadow-2xl border border-indigo-500/30 max-w-sm mx-auto w-full">
+                                {/* Card Header */}
+                                <div className="grid grid-cols-5 gap-1 mb-1.5">
+                                    {['B', 'I', 'N', 'G', 'O'].map((l, i) => (
+                                        <div key={l} className={`text-center font-black py-1 rounded-t-lg text-white text-sm
+                                            ${i === 0 ? 'bg-orange-500' : i === 1 ? 'bg-green-600' : i === 2 ? 'bg-blue-600' : i === 3 ? 'bg-red-600' : 'bg-purple-600'}`}>
+                                            {l}
+                                        </div>
+                                    ))}
                                 </div>
-                                <div className="grid grid-cols-5 gap-1">
-                                    {formatBackendCard(card.masterCard.numbers).map((row, rIdx) =>
+                                {/* Card Grid */}
+                                <div className="grid grid-cols-5 gap-1 bg-white/5 p-1 rounded-b-lg">
+                                    {formatBackendCard(card.masterCard?.numbers || card.numbers).map((row, rIdx) =>
                                         row.map((cell: any, cIdx: number) => {
-                                            const isChecked = cell.number === null || drawnNumbers.includes(cell.number);
+                                            const numValue = cell?.number ?? cell?.Number;
+                                            const isChecked = numValue === null || drawnNumbers.includes(numValue);
                                             return (
-                                                <div key={`${rIdx}-${cIdx}`} className={`h-11 flex items-center justify-center rounded-md border border-black/5 text-lg font-black transition-all ${isChecked ? 'bg-green-500 text-white shadow-inner scale-[0.98]' : 'bg-white text-slate-800'
-                                                    }`}>
-                                                    {cell.number ?? '★'}
+                                                <div key={`${rIdx}-${cIdx}`} className={`h-12 flex items-center justify-center rounded-lg text-lg font-black transition-all shadow-md
+                                                    ${isChecked ? 'bg-green-500 text-white scale-95 shadow-inner' : 'bg-[#fff5d7] text-slate-900 border-b-4 border-black/10'}`}>
+                                                    {numValue ?? '★'}
                                                 </div>
                                             );
                                         })
                                     )}
                                 </div>
-                                <p className="text-center text-[10px] font-bold text-red-500/60 mt-2 uppercase tracking-tighter">Board No.{card.masterCardId}</p>
+                                <p className="text-center text-[10px] font-bold text-orange-500/80 mt-2 uppercase tracking-widest">Board No.{card.masterCardId}</p>
                             </div>
                         ))}
                     </div>
                 </div>
             </div>
 
-            {/* Sticky Bingo Button Container */}
-            <div className="absolute bottom-20 left-40 right-0 px-4 pointer-events-none">
+            {/* Sticky Bingo Button */}
+            <div className="absolute bottom-20 left-[140px] right-0 px-6 pointer-events-none">
                 <button
                     onClick={handleClaimBingo}
-                    className="w-full pointer-events-auto bg-orange-500 hover:bg-orange-400 py-4 rounded-2xl font-black text-3xl text-white shadow-[0_6px_0_rgb(194,65,12)] active:translate-y-1 active:shadow-none transition-all"
+                    disabled={!isCountingUp}
+                    className={`w-full pointer-events-auto py-5 rounded-2xl font-black text-4xl text-white shadow-[0_8px_0_rgb(194,65,12)] active:translate-y-1 active:shadow-none transition-all transform
+                        ${isCountingUp ? 'bg-orange-600 hover:bg-orange-500' : 'bg-slate-700 shadow-none opacity-50 cursor-not-allowed'}`}
                 >
                     BINGO!
                 </button>
             </div>
 
             {/* Bottom Nav Bar */}
-            <div className="p-3 grid grid-cols-2 gap-4 bg-slate-900 border-t border-white/10 z-10">
-                <button className="bg-blue-500 hover:bg-blue-400 py-2.5 rounded-full font-bold text-sm shadow-lg transition-colors">Refresh</button>
-                <button onClick={onLeave} className="bg-orange-500 hover:bg-orange-400 py-2.5 rounded-full font-bold text-sm shadow-lg transition-colors">Leave</button>
+            <div className="p-4 grid grid-cols-2 gap-4 bg-[#0f172a] border-t border-white/5 z-20">
+                <button onClick={() => window.location.reload()} className="bg-[#3b82f6] hover:bg-[#2563eb] py-3 rounded-full font-black text-sm shadow-lg shadow-blue-500/20 transition-all uppercase tracking-widest">Refresh</button>
+                <button onClick={onLeave} className="bg-orange-600 hover:bg-orange-500 py-3 rounded-full font-black text-sm shadow-lg shadow-orange-500/20 transition-all uppercase tracking-widest">Leave</button>
             </div>
         </div>
     );

@@ -7,11 +7,7 @@ import { telegramInit } from './services/api';
 const App = () => {
     const [view, setView] = useState<'auth' | 'wager' | 'lobby' | 'game'>('auth');
     const [userId, setUserId] = useState<number | null>(null);
-
-    // FIX: Removed 'authToken' variable name since it wasn't being used. 
-    // We only need the setter to trigger the logic.
     const [, setAuthToken] = useState<string | null>(null);
-
     const [wager, setWager] = useState<number | null>(null);
     const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
 
@@ -27,10 +23,8 @@ const App = () => {
                     if (response.success && response.data) {
                         setAuthToken(response.data);
                         localStorage.setItem('bingo_token', response.data);
-
                         const idMatch = response.data.match(/\d+$/);
                         const id = idMatch ? parseInt(idMatch[0]) : telegram.initDataUnsafe?.user?.id;
-
                         setUserId(id || 999);
                         setView('wager');
                         return;
@@ -39,13 +33,10 @@ const App = () => {
                     console.error('Auth API Error:', error);
                 }
             }
-
-            console.log("Entering Guest/Dev Mode");
             const fallbackId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || 12345;
             setUserId(fallbackId);
             setView('wager');
         };
-
         initTelegramAuth();
     }, []);
 
@@ -56,7 +47,7 @@ const App = () => {
 
     const handleEnterGame = (roomId: number) => {
         setActiveRoomId(roomId);
-        setView('game');
+        setView('game'); // Direct transition to GameRoom
     };
 
     const handleBackToWager = () => {
@@ -65,11 +56,11 @@ const App = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-950 text-white">
+        <div className="min-h-screen bg-slate-950 text-white font-sans">
             {view === 'auth' && (
                 <div className="flex flex-col items-center justify-center min-h-screen">
                     <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-indigo-400 font-medium">Connecting to Bingo...</p>
+                    <p className="text-indigo-400 font-medium uppercase tracking-widest text-xs">Authenticating...</p>
                 </div>
             )}
 

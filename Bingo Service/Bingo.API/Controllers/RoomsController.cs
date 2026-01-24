@@ -71,6 +71,13 @@ public class RoomsController : ControllerBase
         if (result.IsFailed) return BadRequest(result);
         return Ok(result);
     }
+    [HttpGet("{roomId}")]
+    public async Task<Response<Room>> GetRoomById(long roomId)
+    {
+        var query = new GetRoomByIdQuery();
+        query.RoomId = roomId;
+        return await _mediator.Send(query);
+    }
     [HttpGet("{roomId}/state")]
     public async Task<ActionResult<Response<RoomStateDto>>> GetRoomState(long roomId)
     {

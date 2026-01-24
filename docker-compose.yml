@@ -52,7 +52,7 @@ services:
       - bingo-network
 
   bingo-frontend:
-    image: bingo-frontend:1.0.20
+    image: bingo-frontend:1.0.23
     build:
       context: Bingo App
       dockerfile: Dockerfile

@@ -38,7 +38,17 @@ public class BingoRepository : IBingoRepository
                     .ThenInclude(m => m.Numbers)
             .FirstOrDefaultAsync(r => r.RoomId == roomId);
     }
-
+    public async Task<Room?> GetRoomById(long roomId)
+    {
+        return await _context.Rooms
+            .Include(r => r.Players)
+                .ThenInclude(p => p.User)
+            .Include(r => r.CalledNumbers)
+            .Include(r => r.Cards)
+                .ThenInclude(c => c.MasterCard)
+                    .ThenInclude(m => m.Numbers)
+            .FirstOrDefaultAsync(r => r.RoomId == roomId);
+    }
     public async Task<List<Card>> GetUserCardsInRoomAsync(long userId, long roomId)
     {
         return await _context.Cards
