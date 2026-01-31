@@ -228,11 +228,25 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 grid grid-cols-5 gap-1.5 content-start">
                         {Array.from({ length: 75 }).map((_, i) => {
-                            const num = i + 1;
+                            // Calculate row and column based on grid index 'i' (0-74)
+                            const row = Math.floor(i / 5); // 0 to 14
+                            const col = i % 5;             // 0 to 4
+
+        
+                            const num = (col * 15) + (row + 1);
+
                             const isDrawn = drawnNumbers.includes(num);
                             const isLast = currentNumber?.val === num;
+
                             return (
-                                <div key={num} className={`aspect-square flex items-center justify-center rounded-md text-[10px] md:text-xs font-bold border transition-all ${isDrawn ? (isLast ? 'bg-orange-500 border-white animate-pulse scale-110 z-10' : 'bg-green-600 border-green-400 text-white') : 'bg-white/5 border-transparent text-slate-700'}`}>
+                                <div
+                                    key={num}
+                                    className={`aspect-square flex items-center justify-center rounded-md text-[10px] md:text-xs font-bold border transition-all 
+                        ${isDrawn
+                                            ? (isLast ? 'bg-orange-500 border-white animate-pulse scale-110 z-10' : 'bg-green-600 border-green-400 text-white')
+                                            : 'bg-white/5 border-transparent text-slate-700'
+                                        }`}
+                                >
                                     {num}
                                 </div>
                             );
