@@ -67,8 +67,8 @@ const App = () => {
                 </div>
             )}
 
-            {view === 'wager' && (
-                <WagerSelection onWagerSelected={handleWagerSelected} />
+            {view === 'wager' && userId && (
+                <WagerSelection userId={userId} onWagerSelected={handleWagerSelected} />
             )}
 
             {view === 'lobby' && userId && wager !== null && (

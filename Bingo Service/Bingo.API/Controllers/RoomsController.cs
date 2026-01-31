@@ -106,6 +106,15 @@ public class RoomsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("purchase")]
+    public async Task<ActionResult<Response<bool>>> PurchaseCards([FromBody] PurchaseCardsRequest request)
+    {
+        var command = new PurchaseCardsCommand(request.UserId, request.RoomId, request.MasterCardIds);
+        var result = await _mediator.Send(command);
+        if (result.IsFailed) return BadRequest(result);
+        return Ok(result);
+    }
+
     [HttpPost("lobby/confirm")]
     public async Task<ActionResult<Response<string>>> ConfirmSelection([FromBody] ConfirmSelectionRequest request)
     {
@@ -115,6 +124,7 @@ public class RoomsController : ControllerBase
     }
 
     public record ConfirmSelectionRequest(long UserId, long RoomId, List<int> MasterCardIds);
+    public record PurchaseCardsRequest(long UserId, long RoomId, List<int> MasterCardIds);
 
     public record JoinRoomRequest(long UserId, decimal CardPrice);
     public record UserRequest(long UserId);

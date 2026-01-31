@@ -49,17 +49,19 @@ namespace Bingo.Core.Features.Gameplay.Handler
                     return Response<bool>.Error("You can only choose a maximum of 2 cards.");
 
                 // 4. Save the selection
-                await _repository.PickMasterCardAsync(request.UserId, request.RoomId, request.MasterCardId);
+                // REMOVED: Do not persist card reservation without payment.
+                // await _repository.PickMasterCardAsync(request.UserId, request.RoomId, request.MasterCardId);
             }
             else
             {
                 // UNSELECT LOGIC: Remove the record from the database
-                await _repository.DeleteAsync<Card>(c =>
-                    c.RoomId == request.RoomId &&
-                    c.UserId == request.UserId &&
-                    c.MasterCardId == request.MasterCardId);
-
-                await _repository.SaveChanges();
+                // REMOVED:
+                // await _repository.DeleteAsync<Card>(c =>
+                //     c.RoomId == request.RoomId &&
+                //     c.UserId == request.UserId &&
+                //     c.MasterCardId == request.MasterCardId);
+                
+                // await _repository.SaveChanges();
             }
 
             // 5. BROADCAST THE CHANGE

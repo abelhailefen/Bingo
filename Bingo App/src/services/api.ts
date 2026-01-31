@@ -2,6 +2,7 @@ import axios from 'axios';
 import type { ApiResponse } from '../types/api';
 import type { Room, RoomSummary, JoinLobbyResponse } from '../types/room';
 import type { MasterCard } from '../types/gameplay';
+import type { User } from '../types/user';
 
 const api = axios.create({
     baseURL: '/api', // Use relative path if proxied, or full URL
@@ -23,6 +24,13 @@ export const devLogin = async (userId: number, username: string): Promise<ApiRes
     const response = await api.post('/auth/dev-login', { userId, username });
     return response.data;
 };
+
+// User
+export const getUser = async (userId: number): Promise<ApiResponse<User>> => {
+    const response = await api.get(`/auth/user`, { params: { userId } });
+    return response.data;
+};
+
 // Rooms
 export const getRooms = async (): Promise<ApiResponse<RoomSummary[]>> => {
     const response = await api.get('/rooms/list');
@@ -41,32 +49,35 @@ export const createRoom = async (name: string, hostUserId: number): Promise<ApiR
 
 // Gameplay
 
-// Updated to include roomId
 export const getMasterCard = async (roomId: number, cardId: number): Promise<ApiResponse<MasterCard>> => {
     const response = await api.get(`/rooms/${roomId}/master-card/${cardId}`);
     return response.data;
 };
 
-// Automatic grouping: finds or creates a waiting room
 export const joinAutoLobby = async (userId: number, cardPrice: number): Promise<ApiResponse<JoinLobbyResponse>> => {
     const response = await api.post('/rooms/lobby/join', { userId, cardPrice });
     return response.data;
 };
 
-// SignalR: Notify others that I am previewing/locking a card
-// src/services/api.ts
-
 export const selectCardLock = async (
     roomId: number,
     masterCardId: number,
     isLocked: boolean,
-    userId: number // <--- ADD THIS
+    userId: number
 ): Promise<ApiResponse<boolean>> => {
-    // Send userId in the body
     const response = await api.post(`/rooms/${roomId}/select-card`, {
         masterCardId,
         isLocked,
-        userId // <--- ADD THIS
+        userId
+    });
+    return response.data;
+};
+
+export const purchaseCards = async (userId: number, roomId: number, masterCardIds: number[]): Promise<ApiResponse<boolean>> => {
+    const response = await api.post('/rooms/purchase', {
+        userId,
+        roomId,
+        masterCardIds
     });
     return response.data;
 };
@@ -75,15 +86,12 @@ export const drawNumber = async (roomId: number, userId: number): Promise<ApiRes
     const response = await api.post(`/rooms/${roomId}/draw`, { userId });
     return response.data;
 };
-// ... existing imports ...
 
-// Get all cards belonging to the current user in a specific room
 export const getMyCards = async (roomId: number, userId: number): Promise<ApiResponse<any[]>> => {
     const response = await api.get(`/rooms/${roomId}/users/${userId}/cards`);
     return response.data;
 };
 
-// Notify the server that the user is claiming a win
 export const claimBingo = async (roomId: number, userId: number): Promise<ApiResponse<any>> => {
     const response = await api.post(`/rooms/${roomId}/claim`, { userId });
     return response.data;
@@ -93,8 +101,10 @@ export const getTakenCards = async (roomId: number): Promise<ApiResponse<number[
     const response = await api.get(`/rooms/${roomId}/taken-cards`);
     return response.data;
 };
+
 export const leaveLobby = async (roomId: number, userId: number): Promise<ApiResponse<void>> => {
     const response = await api.post(`/rooms/${roomId}/leave`, { userId });
     return response.data;
 };
+
 export default api;

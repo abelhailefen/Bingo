@@ -6,7 +6,10 @@ import {
     selectCardLock,
     getTakenCards,
     getMyCards,
-    leaveLobby
+    leaveLobby,
+    purchaseCards,
+    getUser,
+    getMasterCard
 } from '../services/api';
 import {
     setLobbyData,
@@ -36,23 +39,35 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [cardPage, setCardPage] = useState<number>(0);
     const [serverMessage, setServerMessage] = useState<string | null>(null);
+    
+    // NEW STATE
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [previewCards, setPreviewCards] = useState<Record<number, MasterCard>>({});
+    const [userBalance, setUserBalance] = useState<number | null>(null);
 
-    const { roomId, myCards, lockedCards } = useSelector((state: RootState) => state.game);
+    const { roomId, lockedCards } = useSelector((state: RootState) => state.game);
 
     useEffect(() => {
         roomIdRef.current = roomId;
     }, [roomId]);
+
+    // Fetch Balance
+    useEffect(() => {
+        getUser(userId).then(res => {
+            if (!res.isFailed && res.data) {
+                setUserBalance(res.data.balance);
+            }
+        });
+    }, [userId]);
 
     const getCardId = (obj: MasterCard | any): number => {
         if (!obj) return 0;
         return obj.masterCardId ?? obj.MasterCardId ?? obj.id ?? obj.Id ?? 0;
     };
 
-    const getNumbers = (obj: MasterCard | any): any[] => {
-        return obj.numbers ?? obj.Numbers ?? [];
-    };
-
     const refreshMyCards = async (rId: number) => {
+        // Only for REJOINING or if we persist. 
+        // With new flow, myCards might be empty until game starts or after purchase.
         try {
             const myCardsRes = await getMyCards(rId, userId);
             if (myCardsRes.data) {
@@ -88,12 +103,11 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             }
         });
 
-        // If the game starts and we are STILL in this component, it means we 
-        // didn't click "Join Game". We should move to the next lobby.
         connection.on("GameStarted", (startedRoomId: number) => {
             if (Number(startedRoomId) === roomIdRef.current) {
-                console.log("Room started, but I am still in lobby. Moving to next room...");
-                initLobby();
+                // If game starts, we might want to auto-move if we purchased? 
+                // Or if we haven't purchased, we missed the boat.
+                 initLobby();
             }
         });
 
@@ -110,6 +124,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         try {
             setIsProcessing(false);
             setServerMessage(null);
+            setSelectedIds([]); // Reset selection
 
             dispatch(setLobbyData({ roomId: null, wager: wager }));
             dispatch(updateMyCards([]));
@@ -122,7 +137,14 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                 setScheduledStartTime(res.data.scheduledStartTime);
                 dispatch(setLobbyData({ roomId: rId, wager }));
 
-                await refreshMyCards(rId);
+                // Load existing cards (rejoin scenario)
+                const existing = await refreshMyCards(rId);
+                 if (existing.length > 0) {
+                     // If user already has cards (purchased), pre-select them or just show them?
+                     // For now, let's assume they are "Selected"
+                     setSelectedIds(existing.map(c => getCardId(c)));
+                 }
+
                 const takenRes = await getTakenCards(rId);
                 if (takenRes.data) {
                     dispatch(updateLockedCards(takenRes.data.map(Number)));
@@ -138,7 +160,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
     useEffect(() => {
         initLobby();
         return () => {
-            // Only notify "Leave" if we are NOT going to the game screen
             if (roomIdRef.current && !isTransitioningToGame.current) {
                 leaveLobby(roomIdRef.current, userId).catch(console.error);
             }
@@ -146,7 +167,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         };
     }, [initLobby, userId]);
 
-    // Timer Logic: Auto-refresh to next room if user lingers in lobby
     useEffect(() => {
         if (!scheduledStartTime) return;
 
@@ -159,7 +179,6 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
             if (diff <= 0) {
                 clearInterval(interval);
-                // Wait a few seconds for server state to sync, then find a new room
                 setTimeout(() => {
                     if (!isTransitioningToGame.current) initLobby();
                 }, 3000);
@@ -171,18 +190,44 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
     const handleToggleCard = async (cardId: number) => {
         if (!roomId || countdown <= 1) return;
-        const isMine = myCards.some((c) => getCardId(c) === cardId);
+        
+        // Local Logic
+        const isSelected = selectedIds.includes(cardId);
+        let newSelection = [...selectedIds];
 
+        if (isSelected) {
+            newSelection = newSelection.filter(id => id !== cardId);
+            // Remove from previewCards if deselected
+            setPreviewCards(prev => {
+                const newPrev = { ...prev };
+                delete newPrev[cardId];
+                return newPrev;
+            });
+        } else {
+            if (newSelection.length >= 2) {
+                // Auto deselect first? Or strict limit?
+                // Strict limit for now
+                alert("You can only select up to 2 cards.");
+                return;
+            }
+            newSelection.push(cardId);
+            
+            // Fetch preview data if needed
+            if (!previewCards[cardId]) {
+                 getMasterCard(roomId, cardId).then(res => {
+                     if (res.data) {
+                         setPreviewCards(prev => ({ ...prev, [cardId]: res.data }));
+                     }
+                 });
+            }
+        }
+
+        setSelectedIds(newSelection);
+
+        // Optional: Broadcast "Looking at" (Soft Lock) 
+        // We use selectCardLock but know it doesn't persist DB anymore
         try {
-            if (!isMine && myCards.length >= 2) {
-                const firstCardId = getCardId(myCards[0]);
-                await selectCardLock(roomId, firstCardId, false, userId);
-            }
-
-            const res = await selectCardLock(roomId, cardId, !isMine, userId);
-            if (res && !res.isFailed) {
-                await refreshMyCards(roomId);
-            }
+            await selectCardLock(roomId, cardId, !isSelected, userId);
         } catch (err) {
             console.error("Card Toggle Error:", err);
         }
@@ -190,32 +235,52 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
     const handleConfirmJoin = async () => {
         if (!roomId) return;
+        
+        if (selectedIds.length === 0) {
+            alert("Please select at least one card first.");
+            return;
+        }
+
+        // Balance Check Client Side
+        const totalCost = selectedIds.length * wager;
+        if (userBalance !== null && userBalance < totalCost) {
+            alert(`Insufficient Balance! You need ${totalCost.toFixed(2)} Birr but have ${userBalance.toFixed(2)} Birr.`);
+            return;
+        }
+
         setIsProcessing(true);
 
         try {
-            // Final check: User must have cards
-            const currentCards = await refreshMyCards(roomId);
-            if (currentCards.length === 0) {
-                alert("Please select at least one card first.");
-                setIsProcessing(false);
-                return;
+            const res = await purchaseCards(userId, roomId, selectedIds);
+            
+            if (!res.isFailed) {
+                // Success!
+                isTransitioningToGame.current = true;
+                onEnterGame(roomId);
+            } else {
+                alert(res.message || "Purchase failed. Please try again.");
+                // Refresh taken cards as maybe someone took it
+                const takenRes = await getTakenCards(roomId);
+                if (takenRes.data) dispatch(updateLockedCards(takenRes.data.map(Number)));
             }
-
-            // SET TRANSITION TO TRUE BEFORE NAVIGATING
-            isTransitioningToGame.current = true;
-
-            // GO TO GAME ROOM IMMEDIATELY
-            onEnterGame(roomId);
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
+            const errorMsg = error.response?.data?.message || "An error occurred during purchase.";
+            alert(errorMsg);
+        } finally {
             setIsProcessing(false);
         }
+    };
+    
+    // Helper for grid rendering
+    const getNumbers = (obj: MasterCard | any): any[] => {
+        return obj?.numbers ?? obj?.Numbers ?? [];
     };
 
     return (
         <div className="min-h-screen bg-[#0f172a] text-white flex flex-col">
             {/* Header Stats */}
-            <div className="grid grid-cols-3 gap-3 p-4 bg-indigo-900/40 border-b border-white/5">
+            <div className="grid grid-cols-4 gap-2 p-4 bg-indigo-900/40 border-b border-white/5">
                 <div className="bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg">
                     <span className="text-[10px] font-bold text-indigo-400 uppercase">Room</span>
                     <span className="text-lg font-black">{roomId ?? '--'}</span>
@@ -225,6 +290,13 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                     <span className="text-[10px] font-bold text-indigo-400 uppercase">Stake</span>
                     <span className="text-lg font-black">{wager}</span>
                 </div>
+                
+                 <div className="bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg">
+                    <span className="text-[10px] font-bold text-indigo-400 uppercase">Balance</span>
+                     <span className="text-sm font-black text-green-600">
+                        {userBalance !== null ? `${userBalance} ETB` : '...'}
+                    </span>
+                 </div>
 
                 <div className={`bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg border-2 transition-all duration-500 ${serverMessage || countdown < 10 ? 'border-orange-500' : 'border-transparent'}`}>
                     <span className="text-[10px] font-bold text-orange-400 uppercase">
@@ -257,15 +329,15 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
                 <div className="grid grid-cols-10 gap-1.5 max-w-sm mx-auto mb-8 bg-indigo-950/30 p-2 rounded-xl border border-white/5">
                     {Array.from({ length: 100 }, (_, i) => (cardPage * 100) + i + 1).map(id => {
-                        const isMine = myCards.some((c) => getCardId(c) === id);
-                        const isTaken = lockedCards.includes(id);
+                        const isSelected = selectedIds.includes(id);
+                        const isTaken = lockedCards.includes(id) && !isSelected; // Taken by others
                         return (
                             <button
                                 key={id}
-                                disabled={(isTaken && !isMine) || countdown <= 1 || isProcessing}
+                                disabled={isTaken || countdown <= 1 || isProcessing}
                                 onClick={() => handleToggleCard(id)}
                                 className={`aspect-square flex items-center justify-center text-[10px] font-bold rounded transition-all 
-                                    ${isMine ? 'bg-orange-500 scale-110 shadow-lg text-white' :
+                                    ${isSelected ? 'bg-orange-500 scale-110 shadow-lg text-white' :
                                         isTaken ? 'bg-slate-800 opacity-20 cursor-not-allowed' :
                                             'bg-indigo-500/10 text-indigo-300'}`}>
                                 {id}
@@ -276,13 +348,18 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
                 {/* Previews */}
                 <div className="flex gap-4 justify-center max-w-md mx-auto pb-32">
-                    {[0, 1].map(index => (
+                    {[0, 1].map(index => {
+                        const hasSelection = selectedIds.length > index;
+                        const cardId = hasSelection ? selectedIds[index] : null;
+                        const cardData = cardId ? previewCards[cardId] : null;
+                        
+                        return (
                         <div key={index} className="flex-1">
-                            {myCards[index] ? (
+                            {cardId ? (
                                 <div className="relative bg-[#fefce8] p-2 rounded-xl shadow-2xl border-b-4 border-black/10">
                                     <button
                                         disabled={countdown <= 1}
-                                        onClick={() => handleToggleCard(getCardId(myCards[index]))}
+                                        onClick={() => handleToggleCard(cardId)}
                                         className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full font-bold shadow-lg flex items-center justify-center z-20">×</button>
                                     <div className="grid grid-cols-5 text-center font-black text-[9px] mb-1">
                                         <span className="text-orange-600">B</span><span className="text-green-600">I</span>
@@ -293,7 +370,13 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                                         {Array(5).fill(0).map((_, r) => (
                                             <div key={r} className="grid grid-cols-5 gap-0.5">
                                                 {Array(5).fill(0).map((_, c) => {
-                                                    const nums = getNumbers(myCards[index]);
+                                                    if (!cardData) {
+                                                         return (
+                                                            <div key={c} className="h-8 flex items-center justify-center border border-black/5 bg-slate-100 animate-pulse rounded-sm"></div>
+                                                         );
+                                                    }
+                                                    
+                                                    const nums = getNumbers(cardData);
                                                     const cell = nums.find(n => (n.positionRow ?? n.PositionRow) === r + 1 && (n.positionCol ?? n.PositionCol) === c + 1);
                                                     const val = cell?.number ?? cell?.Number;
                                                     return (
@@ -305,6 +388,9 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                                             </div>
                                         ))}
                                     </div>
+                                     <div className="mt-2 text-center text-[10px] text-slate-400 font-bold uppercase">
+                                        {wager} ETB
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="h-40 border-2 border-dashed border-indigo-500/20 rounded-xl bg-indigo-950/20 flex items-center justify-center text-indigo-500/40 text-[10px] font-black uppercase">
@@ -312,7 +398,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                                 </div>
                             )}
                         </div>
-                    ))}
+                    )})}
                 </div>
             </div>
 
@@ -326,13 +412,14 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                 </button>
                 <button
                     onClick={handleConfirmJoin}
-                    disabled={myCards.length === 0 || isProcessing}
-                    className={`py-4 rounded-2xl font-black text-sm uppercase transition-all ${myCards.length > 0 && !isProcessing
-                        ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/20'
+                    disabled={selectedIds.length === 0 || isProcessing}
+                    className={`py-4 rounded-2xl font-black text-sm uppercase transition-all ${selectedIds.length > 0 && !isProcessing
+                        ? 'bg-green-600 text-white shadow-lg shadow-green-900/20'
                         : 'bg-slate-800 text-slate-600 cursor-not-allowed'
                         }`}
                 >
-                    {isProcessing ? 'PROCESSING...' : 'JOIN GAME'}
+                    {isProcessing ? 'PROCESSING...' : 
+                     selectedIds.length > 0 ? `BUY FOR ${selectedIds.length * wager} BIRR` : 'SELECT CARD'}
                 </button>
             </div>
         </div>
