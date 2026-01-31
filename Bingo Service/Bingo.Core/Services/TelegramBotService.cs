@@ -99,7 +99,7 @@ public class TelegramBotService : BackgroundService
             var keyboard = new InlineKeyboardMarkup(new[]
             {
                 new[] { InlineKeyboardButton.WithCallbackData("Telebirr", "pay_telebirr") },
-                //new[] { InlineKeyboardButton.WithCallbackData("CBE (Commercial Bank)", "pay_cbe") }
+                new[] { InlineKeyboardButton.WithCallbackData("CBE (Commercial Bank)", "pay_cbe") }
             });
 
             await botClient.SendMessage(chatId, "Select your payment provider:", replyMarkup: keyboard, cancellationToken: ct);
@@ -166,7 +166,6 @@ public class TelegramBotService : BackgroundService
         await botClient.SendMessage(chatId, messageText, replyMarkup: inlineKeyboard, cancellationToken: ct);
     }
 
-    // ... Keep existing HandleStartCommand, HandleContactUpdate, HandlePollingErrorAsync ...
 
     private async Task HandleStartCommand(ITelegramBotClient botClient, Message message, CancellationToken ct)
     {
