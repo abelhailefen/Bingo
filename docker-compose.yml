@@ -51,7 +51,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=bingo-db;Port=5432;Database=bingo;Username=postgres;Password=bingo@password 
       - TelegramBot__Token=8510424881:AAHfGWJID1fMeUtZ-6RpPkd37WNF5F7LKsM
-      - TelegramBot__WebAppUrl=https://then-noted-gas-shepherd.trycloudflare.com
+      - TelegramBot__WebAppUrl=https://niagara-piece-blues-excellent.trycloudflare.com
     labels:
       - "traefik.enable=true"
       # API & Swagger Router
@@ -72,7 +72,7 @@ services:
       dockerfile: Dockerfile
     container_name: bingo-frontend
     environment:
-      - API_URL=https://then-noted-gas-shepherd.trycloudflare.com/api
+      - API_URL=https://niagara-piece-blues-excellent.trycloudflare.com/api
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.bingo-frontend.rule=PathPrefix(`/`)"
