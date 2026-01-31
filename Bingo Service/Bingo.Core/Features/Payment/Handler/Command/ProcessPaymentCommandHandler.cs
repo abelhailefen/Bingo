@@ -14,13 +14,13 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
     private readonly IPaymentService _paymentService;
 
     // TELEBIRR Verification Details
-    private const string TELEBIRR_TARGET_NAME = "Eyosias Hailemariam Fentaw";
-    private const string TELEBIRR_TARGET_LAST4 = "4371";
-
+    // Update these to your actual official receiving account details
+    private const string TELEBIRR_TARGET_NAME = "MUAZ AMEDEL SEMAN";
+    private const string TELEBIRR_TARGET_ACC = "2519****0272";
     // CBE Verification Details 
     // (Update these if they differ from Telebirr)
-    private const string CBE_TARGET_NAME = "Eyosias Hailemariam Fentaw";
-    private const string CBE_TARGET_LAST4 = "4371";
+    private const string CBE_TARGET_NAME = "PAWLOS ANDOR AMELEWORK ANDOR";
+    private const string CBE_TARGET_LAST4 = "3124";
 
     public ProcessPaymentCommandHandler(IBingoRepository repository, IPaymentService paymentService)
     {
@@ -32,38 +32,49 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
     {
         try
         {
+            Console.WriteLine($"Processing payment for provider: {request.Provider}");
+            Console.WriteLine($"SMS Text sample: {request.SmsText.Substring(0, Math.Min(100, request.SmsText.Length))}...");
+
             decimal amountProcessed = 0;
             string transactionRef = string.Empty;
 
-            /* 1. VALIDATION PHASE */
             if (request.Provider == PaymentProviderEnum.Telebirr)
             {
                 var receipt = await _paymentService.ValidateTeleBirrPayment(request.SmsText);
 
                 if (receipt == null)
-                    return Response<bool>.Error("Could not validate Telebirr receipt. Ensure the link is valid.");
+                    return Response<bool>.Error("Could not parse receipt. Please check the link.");
 
-                // Verify Receiver Identity
-                if (!receipt.CreditedPartyName.Equals(TELEBIRR_TARGET_NAME, StringComparison.OrdinalIgnoreCase) ||
-                    receipt.CreditedPartyAccountLast4 != TELEBIRR_TARGET_LAST4)
+                // VALIDATION
+                bool isNameValid = receipt.CreditedPartyName.Equals(TELEBIRR_TARGET_NAME, StringComparison.OrdinalIgnoreCase);
+                bool isAccValid = receipt.CreditedPartyAccountLast4.Contains(TELEBIRR_TARGET_ACC);
+
+                if (!isNameValid || !isAccValid)
                 {
-                    return Response<bool>.Error($"Security Check Failed: Payment was sent to {receipt.CreditedPartyName} (...{receipt.CreditedPartyAccountLast4}) instead of the official account.");
+                    return Response<bool>.Error($"Security Check Failed: Payment sent to {receipt.CreditedPartyName} ({receipt.CreditedPartyAccountLast4})");
                 }
 
                 amountProcessed = receipt.AmountEtb;
-                transactionRef = receipt.TransactionId;
+                transactionRef = receipt.TransactionId; // Will be DAM047X1DM
             }
             else if (request.Provider == PaymentProviderEnum.CBE)
             {
+                Console.WriteLine("Validating CBE payment...");
                 var receipt = await _paymentService.ValidateTCBEPayment(request.SmsText);
 
                 if (receipt == null)
+                {
+                    Console.WriteLine("CBE receipt validation failed");
                     return Response<bool>.Error("Could not validate CBE receipt. Ensure the link is valid.");
+                }
+
+                Console.WriteLine($"CBE receipt validated: Name={receipt.ReceiverName}, Account=...{receipt.ReceiverAccountLast4}, Amount={receipt.AmountEtb}");
 
                 // Verify Receiver Identity
                 if (!receipt.ReceiverName.Equals(CBE_TARGET_NAME, StringComparison.OrdinalIgnoreCase) ||
                     receipt.ReceiverAccountLast4 != CBE_TARGET_LAST4)
                 {
+                    Console.WriteLine($"Security check failed: Expected {CBE_TARGET_NAME}/...{CBE_TARGET_LAST4}, Got {receipt.ReceiverName}/...{receipt.ReceiverAccountLast4}");
                     return Response<bool>.Error($"Security Check Failed: Payment was sent to {receipt.ReceiverName} (...{receipt.ReceiverAccountLast4}) instead of the official account.");
                 }
 
@@ -75,20 +86,18 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
                 return Response<bool>.Error("Unsupported payment provider selected.");
             }
 
+            Console.WriteLine($"Transaction reference: {transactionRef}, Amount: {amountProcessed}");
+
             /* 2. DUPLICATE CHECK (Anti-Fraud) */
             var alreadyExists = await _repository.AnyAsync<Payment>(p => p.TransactionReference == transactionRef);
             if (alreadyExists)
-            {
-                return Response<bool>.Error("This transaction has already been processed and added to a balance.");
-            }
+                return Response<bool>.Error("This transaction has already been used.");
 
-            /* 3. DATABASE UPDATE PHASE */
-            // Using a generic find or specific one from your repository
+            /* DATABASE UPDATE: Increment Balance */
             var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
-            if (user == null)
-                return Response<bool>.Error("User account not found in database.");
+            if (user == null) return Response<bool>.Error("User not found.");
 
-            // Create Payment Log
+            // Create log and add balance
             var paymentLog = new Payment
             {
                 UserId = request.UserId,
@@ -98,14 +107,12 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
                 CreatedAt = DateTime.UtcNow
             };
 
-            // Update User Balance
             user.Balance += amountProcessed;
-            user.UpdatedAt = DateTime.UtcNow;
 
-            // Persist Changes
             await _repository.AddAsync(paymentLog);
             await _repository.UpdateAsync(user);
             await _repository.SaveChanges();
+
 
             var result = Response<bool>.Success(true);
             result.Message = $"Payment of {amountProcessed} ETB processed successfully.";
@@ -114,7 +121,7 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
         catch (Exception ex)
         {
             Console.WriteLine($"PAYMENT_ERROR: {ex.Message}");
-            Console.WriteLine($"STACK_TRACE: {ex.StackTrace}"); // Look at your console log for this!
+            Console.WriteLine($"STACK_TRACE: {ex.StackTrace}");
             return Response<bool>.Error($"Processing error: {ex.Message}");
         }
     }

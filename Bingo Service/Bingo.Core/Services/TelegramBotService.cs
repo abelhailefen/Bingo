@@ -99,7 +99,7 @@ public class TelegramBotService : BackgroundService
             var keyboard = new InlineKeyboardMarkup(new[]
             {
                 new[] { InlineKeyboardButton.WithCallbackData("Telebirr", "pay_telebirr") },
-                new[] { InlineKeyboardButton.WithCallbackData("CBE (Commercial Bank)", "pay_cbe") }
+                //new[] { InlineKeyboardButton.WithCallbackData("CBE (Commercial Bank)", "pay_cbe") }
             });
 
             await botClient.SendMessage(chatId, "Select your payment provider:", replyMarkup: keyboard, cancellationToken: ct);
@@ -136,8 +136,8 @@ public class TelegramBotService : BackgroundService
             }
             else
             {
-                // If result is null or Error is empty, provide a fallback message
-                var errorMsg =  "Unknown error occurred during validation.";
+                // CHANGED: Use the actual error message from the result
+                var errorMsg = result?.Message ?? "Validation failed. Please ensure the receipt is correct.";
                 await botClient.SendMessage(message.Chat.Id, $"❌ Failed: {errorMsg}", cancellationToken: ct);
             }
         }
