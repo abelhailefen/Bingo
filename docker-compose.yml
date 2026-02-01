@@ -32,7 +32,7 @@ services:
       - ./traefik.yml:/etc/traefik/traefik.yml
       - ./acme.json:/acme.json
     environment:
-      - CLOUDFLARE_API_TOKEN=hWpt9RljntclSDCYnzwufLxU5cdrJlHprcATI6N-
+      - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
       - CLOUDFLARE_EMAIL=capthailefen@gmail.com
     networks:
       - bingo-network
