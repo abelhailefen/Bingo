@@ -33,7 +33,7 @@ services:
       - ./acme.json:/acme.json
     environment:
       - CLOUDFLARE_API_TOKEN=hWpt9RljntclSDCYnzwufLxU5cdrJlHprcATI6N-
-      - CLOUDFLARE_EMAIL=abenezerg@gmail.com
+      - CLOUDFLARE_EMAIL=capthailefen@gmail.com
     networks:
       - bingo-network
 
