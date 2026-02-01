@@ -13,6 +13,12 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - bingo-network
+    # --- ADD THIS HEALTHCHECK ---
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bingo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   traefik:
     image: traefik:v3.0
@@ -47,18 +53,21 @@ services:
       context: .
       dockerfile: Bingo Service/Bingo.API/Dockerfile
     container_name: bingo-backend
+    # --- ADD THIS RESTART POLICY ---
+    restart: always 
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=bingo-db;Port=5432;Database=bingo;Username=postgres;Password=bingo@password 
       - TelegramBot__Token=8510424881:AAHfGWJID1fMeUtZ-6RpPkd37WNF5F7LKsM
       - TelegramBot__WebAppUrl=https://niagara-piece-blues-excellent.trycloudflare.com
+    depends_on:
+      bingo-db:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
-      # API & Swagger Router
       - "traefik.http.routers.bingo-api.rule=PathPrefix(`/api`) || PathPrefix(`/swagger`)"
       - "traefik.http.routers.bingo-api.entrypoints=web"
       - "traefik.http.services.bingo-api.loadbalancer.server.port=8080"
-      # SignalR Router (Crucial: SignalR needs Sticky Sessions/Websockets)
       - "traefik.http.routers.bingo-signalr.rule=PathPrefix(`/bingohub`)"
       - "traefik.http.routers.bingo-signalr.entrypoints=web"
       - "traefik.http.routers.bingo-signalr.service=bingo-api"
