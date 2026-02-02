@@ -1,94 +1,78 @@
 ﻿using Bingo.Core.Features.PaymentService.Contract.Service;
 using Bingo.Core.Models;
 using HtmlAgilityPack;
-using System;
 using System.Globalization;
-using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using UglyToad.PdfPig;
 
 namespace Bingo.Core.Features.PaymentService.Handler.Service
 {
     public class PaymentService : IPaymentService
     {
-        private static readonly HttpClient _http = new HttpClient
+        // Increased timeout to 60 seconds to handle slow networks/servers
+        private static readonly HttpClient _http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true })
         {
-            Timeout = TimeSpan.FromSeconds(15)
+            Timeout = TimeSpan.FromSeconds(60)
         };
 
         static PaymentService()
         {
-            _http.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+            // Using a more complete set of headers to avoid being blocked as a bot
+            _http.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            _http.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+            _http.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.5");
         }
 
         /* ================= TELEBIRR ================= */
 
         public async Task<TelebirrReceipt?> ValidateTeleBirrPayment(string smsText)
         {
+            string receiptUrl = "";
             try
             {
-                var receiptUrl = ExtractUrl(smsText);
-                // Remove trailing dots from URL if regex caught them from the SMS
-                receiptUrl = receiptUrl.TrimEnd('.');
+                receiptUrl = ExtractUrl(smsText);
+                Console.WriteLine($"[TELEBIRR] Fetching receipt: {receiptUrl}");
 
                 var html = await _http.GetStringAsync(receiptUrl);
                 var doc = new HtmlDocument();
                 doc.LoadHtml(html);
 
-                // 1. Extract Name
-                // Logic: Find TD that contains 'Credited Party name', get the next TD
-                var nameNode = doc.DocumentNode.SelectSingleNode("//td[contains(text(), 'Credited Party name')]/following-sibling::td");
+                // 1. Extract Name (Look for text containing 'Party name')
+                var nameNode = doc.DocumentNode.SelectSingleNode("//td[contains(text(), 'Party name')]/following-sibling::td");
                 string creditedName = HtmlEntity.DeEntitize(nameNode?.InnerText ?? "").Trim();
 
-                // 2. Extract Account
-                var accountNode = doc.DocumentNode.SelectSingleNode("//td[contains(text(), 'Credited party account no')]/following-sibling::td");
+                // 2. Extract Account (Look for text containing 'party account')
+                var accountNode = doc.DocumentNode.SelectSingleNode("//td[contains(text(), 'party account')]/following-sibling::td");
                 string creditedAccount = HtmlEntity.DeEntitize(accountNode?.InnerText ?? "").Trim();
 
-                // 3. Extract Transaction ID and Amount
-                // These are in cells with class 'receipttableTd'
+                // 3. Extract Amount & ID from the table
                 var allDataCells = doc.DocumentNode.SelectNodes("//td[contains(@class, 'receipttableTd')]");
-
                 string transactionId = "";
                 decimal amount = 0;
 
                 if (allDataCells != null)
                 {
-                    // We are looking for the row that has the actual data.
-                    // In your HTML, the 3rd <td> in the data row contains "Birr"
                     for (int i = 0; i < allDataCells.Count; i++)
                     {
                         string cellText = allDataCells[i].InnerText;
-
-                        if (cellText.Contains("Birr") && !cellText.Contains("Settled Amount"))
+                        if (cellText.Contains("Birr") && !cellText.Contains("Settled"))
                         {
-                            // Found the amount cell!
-                            // Amount is usually cells[i]
-                            // Date is usually cells[i-1]
-                            // Transaction ID is usually cells[i-2]
-
                             if (i >= 2)
                             {
                                 transactionId = HtmlEntity.DeEntitize(allDataCells[i - 2].InnerText).Trim();
-
                                 string amountRaw = cellText.ToLower().Replace("birr", "").Replace(",", "").Trim();
                                 decimal.TryParse(amountRaw, NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
-
-                                // If we found a valid amount, we can stop searching
                                 if (amount > 0) break;
                             }
                         }
                     }
                 }
 
-                // Final fallback for Transaction ID from URL if scraping failed
                 if (string.IsNullOrEmpty(transactionId))
-                {
                     transactionId = receiptUrl.Split('/').Last().Split('?').First();
-                }
 
-                Console.WriteLine($"Extracted -> ID: '{transactionId}', Name: '{creditedName}', Acc: '{creditedAccount}', Amt: {amount}");
+                Console.WriteLine($"[TELEBIRR] Extracted -> ID: {transactionId}, Name: {creditedName}, Amt: {amount}");
 
                 if (amount <= 0 || string.IsNullOrEmpty(creditedName))
                     return null;
@@ -97,7 +81,7 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Scraping Error: {ex.Message}");
+                Console.WriteLine($"[TELEBIRR] Error fetching {receiptUrl}: {ex.Message}");
                 return null;
             }
         }
@@ -105,159 +89,90 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
 
         /* ================= CBE ================= */
 
-
         public async Task<CbeReceipt?> ValidateTCBEPayment(string smsText)
         {
             try
             {
                 var receiptUrl = ExtractUrl(smsText);
-                var urlReference = ExtractCbeReference(receiptUrl);
+                var reference = ExtractCbeReference(receiptUrl);
 
-                Console.WriteLine($"Fetching CBE PDF from: {receiptUrl}");
+                Console.WriteLine($"[CBE] Fetching PDF from: {receiptUrl}");
                 var pdfBytes = await _http.GetByteArrayAsync(receiptUrl);
 
                 using var pdf = PdfDocument.Open(pdfBytes);
                 var text = string.Join(" ", pdf.GetPages().Select(p => p.Text));
 
-                // Remove extra spaces but keep the text as one continuous string for regex
+                // CRITICAL: PDF extraction often removes spaces between labels and values
+                // We normalize whitespace but keep the "squeezed" structure
                 text = Regex.Replace(text, @"\s+", " ");
 
-                Console.WriteLine($"Extracted Text: {text}");
-
                 // 1. Extract Receiver Name
-                // Logic: Find everything between "Receiver" and "Account"
-                // Using (?=Account) as a lookahead to stop right before the word Account
+                // Matches everything between 'Receiver' and 'Account' (non-greedy)
                 string receiver = string.Empty;
-                var receiverMatch = Regex.Match(text, @"Receiver(.*?)(?=Account)", RegexOptions.IgnoreCase);
+                var receiverMatch = Regex.Match(text, @"Receiver\s*(.*?)\s*(?=Account)", RegexOptions.IgnoreCase);
                 if (receiverMatch.Success)
-                {
                     receiver = receiverMatch.Groups[1].Value.Trim();
-                }
 
                 // 2. Extract Receiver Account
-                // Logic: Find the second account pattern in the text
+                // Usually the second account (1****XXXX) in the receipt
                 string account = string.Empty;
                 var accountMatches = Regex.Matches(text, @"\d\*+\d{4}");
                 if (accountMatches.Count >= 2)
-                {
-                    account = accountMatches[1].Value; // Second match is always the receiver
-                }
+                    account = accountMatches[1].Value;
 
-                // 3. Extract Transferred Amount
-                // Logic: Look for "Transferred Amount" followed by numbers
+                // 3. Extract Amount
+                // Matches digits after 'Transferred Amount' even if touching
                 decimal amount = 0;
-                var amountMatch = Regex.Match(text, @"Transferred Amount([\d,.]+)", RegexOptions.IgnoreCase);
+                var amountMatch = Regex.Match(text, @"Transferred\s*Amount\s*([\d,.]+)", RegexOptions.IgnoreCase);
                 if (amountMatch.Success)
                 {
                     string amountStr = amountMatch.Groups[1].Value.Replace(",", "");
                     decimal.TryParse(amountStr, NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
                 }
 
-                Console.WriteLine($"Parsed -> Ref: {urlReference}, Rec: {receiver}, Acc: {account}, Amt: {amount}");
+                Console.WriteLine($"[CBE] Parsed -> Ref: {reference}, Rec: {receiver}, Acc: {account}, Amt: {amount}");
 
                 if (amount <= 0 || string.IsNullOrWhiteSpace(receiver) || string.IsNullOrWhiteSpace(account))
                 {
-                    Console.WriteLine("CBE Parsing Failed: One or more fields missing.");
+                    Console.WriteLine("[CBE] Validation failed: Missing data fields.");
                     return null;
                 }
 
-                return new CbeReceipt(
-                    urlReference,
-                    receiver,
-                    GetLast4Digits(account),
-                    amount
-                );
+                return new CbeReceipt(reference, receiver, GetLast4Digits(account), amount);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"CBE Validation Error: {ex.Message}");
+                Console.WriteLine($"[CBE] Error: {ex.Message}");
                 return null;
-            }
-        }
-
-        private static string ExtractCbeReference(string url)
-        {
-            // Extract everything after 'id='
-            var match = Regex.Match(url, @"id=([A-Z0-9]+)");
-            if (match.Success)
-                return match.Groups[1].Value;
-
-            throw new InvalidOperationException("Invalid CBE receipt URL format");
-        }
-
-        private static decimal ExtractCbeAmount(string text)
-        {
-            try
-            {
-                Console.WriteLine("Looking for Transferred Amount in CBE PDF...");
-
-                // Pattern to find "Transferred Amount" followed by the amount
-                var pattern = @"Transferred\s+Amount[^\d]*(\d[\d,]*\.\d{2})";
-                var match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
-
-                if (match.Success)
-                {
-                    var amountStr = match.Groups[1].Value.Replace(",", "");
-                    Console.WriteLine($"Found amount via regex: {amountStr}");
-
-                    if (decimal.TryParse(amountStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
-                    {
-                        return amount;
-                    }
-                }
-
-                // Alternative: Look for amount with ETB suffix
-                var etbPattern = @"(\d[\d,]*\.\d{2})\s*ETB";
-                var etbMatches = Regex.Matches(text, etbPattern);
-
-                Console.WriteLine($"Found {etbMatches.Count} ETB amount matches");
-
-                // The first ETB amount is usually the transferred amount
-                if (etbMatches.Count > 0)
-                {
-                    var amountStr = etbMatches[0].Groups[1].Value.Replace(",", "");
-                    Console.WriteLine($"First ETB amount: {amountStr}");
-
-                    if (decimal.TryParse(amountStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
-                    {
-                        return amount;
-                    }
-                }
-
-                throw new InvalidOperationException("CBE amount not found");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error in ExtractCbeAmount: {ex.Message}");
-                throw;
             }
         }
 
         /* ================= HELPERS ================= */
 
+        private static string ExtractUrl(string text)
+        {
+            // Better URL regex that finds http/https links
+            var match = Regex.Match(text, @"https?:\/\/[^\s\)]+");
+            if (!match.Success)
+                throw new InvalidOperationException("Receipt URL not found");
+
+            // Trim common punctuation that might get caught at the end of the URL in SMS
+            return match.Value.TrimEnd('.', ')', ',', '!');
+        }
+
+        private static string ExtractCbeReference(string url)
+        {
+            var match = Regex.Match(url, @"[?&]id=([A-Z0-9]+)");
+            if (match.Success) return match.Groups[1].Value;
+
+            return url.Split('/').Last().Split('?').First();
+        }
+
         private static string GetLast4Digits(string account)
         {
-            if (string.IsNullOrEmpty(account))
-                return string.Empty;
-
-            // Remove any non-digit characters and get last 4 digits
+            if (string.IsNullOrEmpty(account)) return string.Empty;
             var digits = new string(account.Where(char.IsDigit).ToArray());
             return digits.Length >= 4 ? digits.Substring(digits.Length - 4) : digits;
         }
-
-        private static string ExtractUrl(string text)
-        {
-            var match = Regex.Match(text, @"https?:\/\/\S+");
-            if (!match.Success)
-                throw new InvalidOperationException("Receipt URL not found");
-            return match.Value;
-        }
-
-        private static string ExtractTelebirrTxId(string url)
-        {
-            return url.Split('/').Last();
-        }
-
-      
     }
 }
