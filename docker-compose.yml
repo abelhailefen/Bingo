@@ -51,22 +51,24 @@ services:
       - ConnectionStrings__DefaultConnection=Host=bingo-db;Port=5432;Database=bingo;Username=postgres;Password=bingo@password 
       - TelegramBot__Token=8510424881:AAHfGWJID1fMeUtZ-6RpPkd37WNF5F7LKsM
       - TelegramBot__WebAppUrl=https://melabingo.xyz
-      - TelegramBot__AdminGroupId=-5171365510  # <--- ADD THIS LINE
+      - TelegramBot__AdminGroupId=-5171365510  
 
     depends_on:
       bingo-db:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      # API & Swagger
       - "traefik.http.routers.bingo-api.rule=Host(`melabingo.xyz`) && (PathPrefix(`/api`) || PathPrefix(`/swagger`))"
       - "traefik.http.routers.bingo-api.entrypoints=websecure"
       - "traefik.http.routers.bingo-api.tls.certresolver=cloudflare"
+      - "traefik.http.middlewares.api-strip.stripprefix.prefixes=/api"
+      - "traefik.http.routers.bingo-api.middlewares=api-strip"
+      - "traefik.http.routers.bingo-api.priority=10"
       - "traefik.http.services.bingo-api.loadbalancer.server.port=8080"
-      # SignalR
       - "traefik.http.routers.bingo-signalr.rule=Host(`melabingo.xyz`) && PathPrefix(`/bingohub`)"
       - "traefik.http.routers.bingo-signalr.entrypoints=websecure"
       - "traefik.http.routers.bingo-signalr.tls.certresolver=cloudflare"
+      - "traefik.http.routers.bingo-signalr.priority=11"
       - "traefik.http.routers.bingo-signalr.service=bingo-api"
     networks:
       - bingo-network
