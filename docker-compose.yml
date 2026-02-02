@@ -22,7 +22,6 @@ services:
       retries: 5
 
   traefik:
-    # Upgrade to v3.7 which has the built-in fix for Docker 29+
     image: traefik:v3.3
     container_name: traefik
     restart: unless-stopped
@@ -32,31 +31,18 @@ services:
       - "8081:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml
       - ./acme.json:/acme.json
     environment:
       - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
       - CLOUDFLARE_EMAIL=capthailefen@gmail.com
-      # Setting this environment variable is the correct way to force the API version
-      - DOCKER_API_VERSION=1.44
-    command:
-      - "--log.level=DEBUG"
-      - "--api.insecure=true"
-      - "--api.dashboard=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedByDefault=false"
-      - "--providers.docker.network=bingo-network"
-      # REMOVED: --providers.docker.version (This was the cause of the crash)
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
-      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
-      - "--certificatesresolvers.cloudflare.acme.email=abelhailefen@gmail.com"
-      - "--certificatesresolvers.cloudflare.acme.storage=/acme.json"
-      - "--certificatesresolvers.cloudflare.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
+      # CHANGE THIS LINE:
+      - TRAEFIK_PROVIDERS_DOCKER_VERSION=1.44
+      # You can also use this to ensure it points to the socket correctly:
+      - TRAEFIK_PROVIDERS_DOCKER_ENDPOINT=unix:///var/run/docker.sock
     networks:
       - bingo-network
+
   bingo-backend:
     image: bingo-backend:1.0.17
     build:
@@ -69,6 +55,7 @@ services:
       - ConnectionStrings__DefaultConnection=Host=bingo-db;Port=5432;Database=bingo;Username=postgres;Password=bingo@password 
       - TelegramBot__Token=8510424881:AAHfGWJID1fMeUtZ-6RpPkd37WNF5F7LKsM
       - TelegramBot__WebAppUrl=https://melabingo.xyz
+      - TelegramBot__AdminGroupId=-5171365510  
     depends_on:
       bingo-db:
         condition: service_healthy
