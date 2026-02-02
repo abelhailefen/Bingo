@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   bingo-db:
     image: postgres:15-alpine
@@ -22,8 +20,7 @@ services:
       retries: 5
 
   traefik:
-    # Downgraded to v2.11 for better compatibility with your server
-    image: traefik:v2.11
+    image: traefik:v3.3
     container_name: traefik
     restart: unless-stopped
     ports:
@@ -37,8 +34,8 @@ services:
     environment:
       - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
       - CLOUDFLARE_EMAIL=capthailefen@gmail.com
-      # THIS FIXES THE "VERSION TOO OLD" ERROR
-      - DOCKER_API_VERSION=1.41 
+      # Match your server's minimum requirement
+      - DOCKER_API_VERSION=1.44
     networks:
       - bingo-network
 
@@ -60,14 +57,12 @@ services:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      # API & Swagger
       - "traefik.http.routers.bingo-api.rule=Host(`melabingo.xyz`) && (PathPrefix(`/api`) || PathPrefix(`/swagger`))"
       - "traefik.http.routers.bingo-api.entrypoints=websecure"
       - "traefik.http.routers.bingo-api.tls.certresolver=cloudflare"
       - "traefik.http.routers.bingo-api.priority=100"
       - "traefik.http.services.bingo-api.loadbalancer.server.port=8080"
       
-      # SignalR
       - "traefik.http.routers.bingo-signalr.rule=Host(`melabingo.xyz`) && PathPrefix(`/bingohub`)"
       - "traefik.http.routers.bingo-signalr.entrypoints=websecure"
       - "traefik.http.routers.bingo-signalr.tls.certresolver=cloudflare"
