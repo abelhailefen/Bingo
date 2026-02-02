@@ -15,8 +15,8 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
 
     // TELEBIRR Verification Details
     // Update these to your actual official receiving account details
-    private const string TELEBIRR_TARGET_NAME = "MUAZ AMEDEL SEMAN";
-    private const string TELEBIRR_TARGET_ACC = "2519****0272";
+    private const string TELEBIRR_TARGET_NAME = "Rediet Endale Belay";
+    private const string TELEBIRR_TARGET_ACC = "2519****8491";
     // CBE Verification Details 
     // (Update these if they differ from Telebirr)
     private const string CBE_TARGET_NAME = "PAWLOS ANDOR AMELEWORK ANDOR";
