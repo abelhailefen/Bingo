@@ -105,43 +105,70 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
 
         /* ================= CBE ================= */
 
+
         public async Task<CbeReceipt?> ValidateTCBEPayment(string smsText)
         {
             try
             {
                 var receiptUrl = ExtractUrl(smsText);
-                var reference = ExtractCbeReference(receiptUrl);
+                // The URL ID is a better unique reference than the short Reference No inside the PDF
+                var urlReference = ExtractCbeReference(receiptUrl);
 
-                Console.WriteLine($"Fetching CBE receipt from: {receiptUrl}");
+                Console.WriteLine($"Fetching CBE PDF from: {receiptUrl}");
 
                 var pdfBytes = await _http.GetByteArrayAsync(receiptUrl);
 
                 using var pdf = PdfDocument.Open(pdfBytes);
+                // Join text from all pages with a space to ensure we can regex across lines
                 var text = string.Join(" ", pdf.GetPages().Select(p => p.Text));
 
-                Console.WriteLine($"PDF text length: {text.Length}");
+                // Clean up whitespace (PDFs often have multiple spaces/newlines)
+                text = Regex.Replace(text, @"\s+", " ");
 
-                // Extract receiver name
-                string receiver = ExtractCbeValue(text, "Receiver");
-                Console.WriteLine($"CBE Receiver: {receiver}");
+                Console.WriteLine($"Extracted PDF Text: {text}");
 
-                // Extract account number - get the second occurrence (receiver's account)
-                string account = ExtractCbeValue(text, "Account", 2);
-                Console.WriteLine($"CBE Account: {account}");
+                // 1. Extract Receiver Name
+                // Logic: Look for text between "Receiver" and "Account"
+                string receiver = string.Empty;
+                var receiverMatch = Regex.Match(text, @"Receiver\s+(.*?)\s+Account", RegexOptions.IgnoreCase);
+                if (receiverMatch.Success)
+                {
+                    receiver = receiverMatch.Groups[1].Value.Trim();
+                }
 
-                // Extract amount
-                decimal amount = ExtractCbeAmount(text);
-                Console.WriteLine($"CBE Amount: {amount}");
+                // 2. Extract Receiver Account (The second account mentioned in the file)
+                // Logic: Find all patterns like 1****3124
+                string account = string.Empty;
+                var accountMatches = Regex.Matches(text, @"\d\*+\d{4}");
+                if (accountMatches.Count >= 2)
+                {
+                    // The second one is the Receiver's account
+                    account = accountMatches[1].Value;
+                }
 
-                if (string.IsNullOrWhiteSpace(receiver) ||
-                    string.IsNullOrWhiteSpace(account))
+                // 3. Extract Transferred Amount
+                // Logic: Look for "Transferred Amount" followed by "ETB"
+                decimal amount = 0;
+                var amountMatch = Regex.Match(text, @"Transferred Amount\s+([\d,.]+)\s+ETB", RegexOptions.IgnoreCase);
+                if (amountMatch.Success)
+                {
+                    string amountStr = amountMatch.Groups[1].Value.Replace(",", "");
+                    decimal.TryParse(amountStr, NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
+                }
+
+                // 4. Extract Internal Reference (Optional validation)
+                var pdfRefMatch = Regex.Match(text, @"Reference No\.\s+\(VAT Invoice No\)\s+([A-Z0-9]+)", RegexOptions.IgnoreCase);
+                string pdfReference = pdfRefMatch.Success ? pdfRefMatch.Groups[1].Value : urlReference;
+
+                Console.WriteLine($"Parsed -> Ref: {pdfReference}, Rec: {receiver}, Acc: {account}, Amt: {amount}");
+
+                if (amount <= 0 || string.IsNullOrWhiteSpace(receiver) || string.IsNullOrWhiteSpace(account))
+                {
                     return null;
-
-                // Clean up receiver name - remove "HANNA" if present
-                receiver = receiver.Replace(" HANNA", "").Trim();
+                }
 
                 return new CbeReceipt(
-                    reference,
+                    urlReference, // Use the full URL ID as the DB key to prevent reuse
                     receiver,
                     GetLast4Digits(account),
                     amount
@@ -149,52 +176,19 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in ValidateTCBEPayment: {ex.Message}");
-                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                Console.WriteLine($"CBE Validation Error: {ex.Message}");
                 return null;
             }
         }
 
-        private static string ExtractCbeValue(string text, string label, int occurrence = 1)
+        private static string ExtractCbeReference(string url)
         {
-            try
-            {
-                Console.WriteLine($"Looking for label '{label}', occurrence #{occurrence}");
+            // Extract everything after 'id='
+            var match = Regex.Match(url, @"id=([A-Z0-9]+)");
+            if (match.Success)
+                return match.Groups[1].Value;
 
-                // Since the PDF text is all in one line, we need to use regex
-                var pattern = $@"{label}([^A-Za-z]{{0,10}})([A-Za-z0-9\s*]+)";
-                var matches = Regex.Matches(text, pattern, RegexOptions.IgnoreCase);
-
-                Console.WriteLine($"Found {matches.Count} matches for pattern '{pattern}'");
-
-                if (matches.Count >= occurrence)
-                {
-                    // Group 2 contains the value (after any separator)
-                    var value = matches[occurrence - 1].Groups[2].Value.Trim();
-                    Console.WriteLine($"Extracted value: '{value}'");
-                    return value;
-                }
-
-                // Alternative pattern for cases with different separators
-                var altPattern = $@"{label}[\s:]*([A-Za-z0-9\s*]+)";
-                var altMatches = Regex.Matches(text, altPattern, RegexOptions.IgnoreCase);
-
-                Console.WriteLine($"Found {altMatches.Count} matches for alternative pattern");
-
-                if (altMatches.Count >= occurrence)
-                {
-                    var value = altMatches[occurrence - 1].Groups[1].Value.Trim();
-                    Console.WriteLine($"Extracted value (alt): '{value}'");
-                    return value;
-                }
-
-                return string.Empty;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error in ExtractCbeValue: {ex.Message}");
-                return string.Empty;
-            }
+            throw new InvalidOperationException("Invalid CBE receipt URL format");
         }
 
         private static decimal ExtractCbeAmount(string text)
@@ -270,19 +264,6 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
             return url.Split('/').Last();
         }
 
-        private static string ExtractCbeReference(string url)
-        {
-            // Extract reference from URL or filename
-            var match = Regex.Match(url, @"([A-Z0-9]+)\.pdf");
-            if (match.Success)
-                return match.Groups[1].Value;
-
-            // Try to get from query string
-            match = Regex.Match(url, @"[?&]id=([A-Z0-9]+)");
-            if (match.Success)
-                return match.Groups[1].Value;
-
-            throw new InvalidOperationException("Invalid CBE receipt URL");
-        }
+      
     }
 }
