@@ -39,13 +39,14 @@ public class CreateWithdrawalRequestCommandHandler : IRequestHandler<CreateWithd
 
             // Deduct balance immediately
             user.Balance -= request.Amount;
+            user.UpdatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
             var withdrawalRequest = new WithdrawalRequest
             {
                 UserId = request.UserId,
                 Amount = request.Amount,
                 Status = WithdrawalStatusEnum.Pending,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc)
             };
 
             await _repository.AddAsync(withdrawalRequest);
@@ -66,6 +67,7 @@ public class CreateWithdrawalRequestCommandHandler : IRequestHandler<CreateWithd
                               $"👤 User: {user.Username}\n" +
                               $"📞 Phone: `{user.PhoneNumber}`\n" +
                               $"💰 Amount: {request.Amount} ETB\n" +
+                              $"💳 User Balance: {user.Balance} ETB\n" + 
                               $"🆔 ID: {withdrawalRequest.WithdrawalRequestId}";
 
             await _botClient.SendMessage(_adminGroupId, adminMsg,

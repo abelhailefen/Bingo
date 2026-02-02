@@ -95,12 +95,57 @@ public class TelegramBotService : BackgroundService
             case "/start":
                 await HandleStartCommand(botClient, message, ct);
                 break;
+            case "/admin_users": // <--- Add this case
+                if (chatId.ToString() == _adminGroupId)
+                {
+                    await HandleListAllUsers(botClient, chatId, ct);
+                }
+                else
+                {
+                    await botClient.SendMessage(chatId, "❌ This is an admin-only command.", cancellationToken: ct);
+                }
+                break;
             case "/help":
                 await botClient.SendMessage(chatId, "Use the buttons to Deposit or Withdraw. Share contact to register.", cancellationToken: ct);
                 break;
         }
     }
+    private async Task HandleListAllUsers(ITelegramBotClient botClient, long chatId, CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IBingoRepository>();
 
+        // Fetch all users from the DB
+        // If your repository has a generic ListAsync, use that. 
+        // Otherwise, you might need to add a GetAll method to your repo interface.
+        var users = await repo.FindAsync<BingoUser>(u => true);
+
+        if (users == null || !users.Any())
+        {
+            await botClient.SendMessage(chatId, "📭 No users registered yet.", cancellationToken: ct);
+            return;
+        }
+
+        var userListText = "👥 **Registered Users List**\n\n";
+        foreach (var u in users)
+        {
+            // Formatting: Username (Balance) - Phone
+            userListText += $"• {u.Username} | 💰 {u.Balance} ETB | `{u.PhoneNumber}`\n";
+
+            // Telegram messages have a 4096 character limit. 
+            // If you have hundreds of users, you might need to split the message.
+            if (userListText.Length > 3500)
+            {
+                await botClient.SendMessage(chatId, userListText, parseMode: ParseMode.Markdown, cancellationToken: ct);
+                userListText = "";
+            }
+        }
+
+        if (!string.IsNullOrEmpty(userListText))
+        {
+            await botClient.SendMessage(chatId, userListText, parseMode: ParseMode.Markdown, cancellationToken: ct);
+        }
+    }
     private async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery query, CancellationToken ct)
     {
         var chatId = query.Message!.Chat.Id;
