@@ -62,6 +62,8 @@ namespace Bingo.Core.Features.Gameplay.Handler
             if (winningCard == null)
                 return Response<bool>.Error("Wait! Your card doesn't have a Bingo yet. Keep playing!");
 
+            var playerCount = await _repository.CountAsync<RoomPlayer>(rp => rp.RoomId == request.RoomId);
+
             // 1. Record the Win
             var win = new Win
             {
@@ -69,7 +71,7 @@ namespace Bingo.Core.Features.Gameplay.Handler
                 UserId = request.UserId,
                 CardId = winningCard.CardId,
                 WinType = WinTypeEnum.Line,
-                Prize = room.CardPrice * room.MaxPlayers * 0.8m,
+                Prize = room.CardPrice * playerCount * 0.87m,
                 Verified = true
             };
 
