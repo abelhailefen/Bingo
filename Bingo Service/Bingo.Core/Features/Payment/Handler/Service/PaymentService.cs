@@ -13,7 +13,7 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
         // Increased timeout to 60 seconds to handle slow networks/servers
         private static readonly HttpClient _http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true })
         {
-            Timeout = TimeSpan.FromSeconds(60)
+            Timeout = TimeSpan.FromSeconds(500)
         };
 
         static PaymentService()
