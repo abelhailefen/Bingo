@@ -34,6 +34,12 @@ public class UpdateWithdrawalStatusCommandHandler : IRequestHandler<UpdateWithdr
             withdrawal.Status = request.NewStatus;
             withdrawal.AdminComment = request.AdminComment;
             withdrawal.ProcessedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+            
+            // Fix: Ensure CreatedAt is UTC to satisfy Npgsql
+            if (withdrawal.CreatedAt.Kind == DateTimeKind.Unspecified)
+            {
+                withdrawal.CreatedAt = DateTime.SpecifyKind(withdrawal.CreatedAt, DateTimeKind.Utc);
+            }
 
             // If Rejected, refund the amount
             if (request.NewStatus == WithdrawalStatusEnum.Rejected)
