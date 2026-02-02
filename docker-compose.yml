@@ -20,7 +20,7 @@ services:
       retries: 5
 
   traefik:
-    image: traefik:v3.3
+    image: traefik:v2.11
     container_name: traefik
     restart: unless-stopped
     ports:
@@ -33,13 +33,15 @@ services:
     environment:
       - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
       - CLOUDFLARE_EMAIL=capthailefen@gmail.com
-      - DOCKER_API_VERSION=1.44
     command:
       - "--log.level=DEBUG"
       - "--api.insecure=true"
+      - "--api.dashboard=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
       - "--providers.docker.network=bingo-network"
+      # FORCE THE VERSION HERE (Supported in v2.11)
+      - "--providers.docker.version=1.44"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
