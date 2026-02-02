@@ -30,5 +30,3 @@ providers:
   docker:
     exposedByDefault: false
     network: bingo-network
-    # ADD THIS LINE HERE:
-    version: "1.44"
