@@ -19,7 +19,7 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
     private const string TELEBIRR_TARGET_ACC = "2519****8491";
     // CBE Verification Details 
     // (Update these if they differ from Telebirr)
-    private const string CBE_TARGET_NAME = "PAWLOS ANDOR AMELEWORK ANDOR";
+    private const string CBE_TARGET_NAME = "PAWLOS ANDOR AMELEWORK ANDOR HANNA";
     private const string CBE_TARGET_LAST4 = "3124";
 
     public ProcessPaymentCommandHandler(IBingoRepository repository, IPaymentService paymentService)
