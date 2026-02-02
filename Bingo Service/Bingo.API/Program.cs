@@ -1,5 +1,6 @@
 using Bingo.Core.Services;
 using Bingo.Core.Hubs;
+using Telegram.Bot; // Add this using
 
 using Bingo.Core.Entities.Enums;
 using Bingo.Infrastructure.Context;
@@ -10,7 +11,8 @@ using Bingo.Core.Features.Rooms.Contract.Command;
 using Bingo.Core.Features.Gameplay.Contract.Command;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Services.AddSingleton<ITelegramBotClient>(provider =>
+    new TelegramBotClient(builder.Configuration["TelegramBot:Token"]!));
 
 builder.Services.AddBingoInfrastructure(builder.Configuration);
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(JoinLobbyCommand).Assembly));

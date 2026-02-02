@@ -29,11 +29,11 @@ public class TelegramBotService : BackgroundService
     private static readonly ConcurrentDictionary<long, PaymentProviderEnum> _pendingDeposits = new();
     private static readonly ConcurrentDictionary<long, bool> _pendingWithdrawals = new();
 
-    public TelegramBotService(IConfiguration config, IServiceScopeFactory scopeFactory)
+    public TelegramBotService(IConfiguration config, IServiceScopeFactory scopeFactory, ITelegramBotClient botClient)
     {
         _config = config;
         _scopeFactory = scopeFactory;
-        _botClient = new TelegramBotClient(_config["TelegramBot:Token"]!);
+        _botClient = botClient;
         _adminGroupId = _config["TelegramBot:AdminGroupId"] ?? "";
     }
 
