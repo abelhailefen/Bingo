@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   bingo-db:
     image: postgres:15-alpine
@@ -20,22 +22,23 @@ services:
       retries: 5
 
   traefik:
-  image: traefik:v3.3
-  container_name: traefik
-  restart: unless-stopped
-  ports:
-    - "80:80"
-    - "443:443"
-    - "8081:8080" # Dashboard
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock:ro
-    - ./traefik.yml:/etc/traefik/traefik.yml
-    - ./acme.json:/acme.json
-  environment:
-    - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
-    - CLOUDFLARE_EMAIL=capthailefen@gmail.com
-  networks:
-    - bingo-network
+    image: traefik:v3.3
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8081:8080" # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yml:/etc/traefik/traefik.yml
+      - ./acme.json:/acme.json
+    environment:
+      - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
+      - CLOUDFLARE_EMAIL=capthailefen@gmail.com
+    networks:
+      - bingo-network
+
   bingo-backend:
     image: bingo-backend:1.0.17
     build:
@@ -48,22 +51,20 @@ services:
       - ConnectionStrings__DefaultConnection=Host=bingo-db;Port=5432;Database=bingo;Username=postgres;Password=bingo@password 
       - TelegramBot__Token=8510424881:AAHfGWJID1fMeUtZ-6RpPkd37WNF5F7LKsM
       - TelegramBot__WebAppUrl=https://melabingo.xyz
-      - TelegramBot__AdminGroupId=-5171365510  
     depends_on:
       bingo-db:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
+      # API & Swagger
       - "traefik.http.routers.bingo-api.rule=Host(`melabingo.xyz`) && (PathPrefix(`/api`) || PathPrefix(`/swagger`))"
       - "traefik.http.routers.bingo-api.entrypoints=websecure"
       - "traefik.http.routers.bingo-api.tls.certresolver=cloudflare"
-      - "traefik.http.routers.bingo-api.priority=100"
       - "traefik.http.services.bingo-api.loadbalancer.server.port=8080"
-      
+      # SignalR
       - "traefik.http.routers.bingo-signalr.rule=Host(`melabingo.xyz`) && PathPrefix(`/bingohub`)"
       - "traefik.http.routers.bingo-signalr.entrypoints=websecure"
       - "traefik.http.routers.bingo-signalr.tls.certresolver=cloudflare"
-      - "traefik.http.routers.bingo-signalr.priority=101"
       - "traefik.http.routers.bingo-signalr.service=bingo-api"
     networks:
       - bingo-network
@@ -78,10 +79,10 @@ services:
       - API_URL=https://melabingo.xyz/api
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.bingo-frontend.rule=Host(`melabingo.xyz`)"
+      - "traefik.http.routers.bingo-frontend.rule=Host(`melabingo.xyz`) && PathPrefix(`/`)"
       - "traefik.http.routers.bingo-frontend.entrypoints=websecure"
       - "traefik.http.routers.bingo-frontend.tls.certresolver=cloudflare"
-      - "traefik.http.routers.bingo-frontend.priority=10"
+      - "traefik.http.routers.bingo-frontend.priority=1"
       - "traefik.http.services.bingo-frontend.loadbalancer.server.port=80"
     depends_on:
       - bingo-backend
