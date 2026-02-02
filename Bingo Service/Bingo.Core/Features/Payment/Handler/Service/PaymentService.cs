@@ -111,64 +111,58 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
             try
             {
                 var receiptUrl = ExtractUrl(smsText);
-                // The URL ID is a better unique reference than the short Reference No inside the PDF
                 var urlReference = ExtractCbeReference(receiptUrl);
 
                 Console.WriteLine($"Fetching CBE PDF from: {receiptUrl}");
-
                 var pdfBytes = await _http.GetByteArrayAsync(receiptUrl);
 
                 using var pdf = PdfDocument.Open(pdfBytes);
-                // Join text from all pages with a space to ensure we can regex across lines
                 var text = string.Join(" ", pdf.GetPages().Select(p => p.Text));
 
-                // Clean up whitespace (PDFs often have multiple spaces/newlines)
+                // Remove extra spaces but keep the text as one continuous string for regex
                 text = Regex.Replace(text, @"\s+", " ");
 
-                Console.WriteLine($"Extracted PDF Text: {text}");
+                Console.WriteLine($"Extracted Text: {text}");
 
                 // 1. Extract Receiver Name
-                // Logic: Look for text between "Receiver" and "Account"
+                // Logic: Find everything between "Receiver" and "Account"
+                // Using (?=Account) as a lookahead to stop right before the word Account
                 string receiver = string.Empty;
-                var receiverMatch = Regex.Match(text, @"Receiver\s+(.*?)\s+Account", RegexOptions.IgnoreCase);
+                var receiverMatch = Regex.Match(text, @"Receiver(.*?)(?=Account)", RegexOptions.IgnoreCase);
                 if (receiverMatch.Success)
                 {
                     receiver = receiverMatch.Groups[1].Value.Trim();
                 }
 
-                // 2. Extract Receiver Account (The second account mentioned in the file)
-                // Logic: Find all patterns like 1****3124
+                // 2. Extract Receiver Account
+                // Logic: Find the second account pattern in the text
                 string account = string.Empty;
                 var accountMatches = Regex.Matches(text, @"\d\*+\d{4}");
                 if (accountMatches.Count >= 2)
                 {
-                    // The second one is the Receiver's account
-                    account = accountMatches[1].Value;
+                    account = accountMatches[1].Value; // Second match is always the receiver
                 }
 
                 // 3. Extract Transferred Amount
-                // Logic: Look for "Transferred Amount" followed by "ETB"
+                // Logic: Look for "Transferred Amount" followed by numbers
                 decimal amount = 0;
-                var amountMatch = Regex.Match(text, @"Transferred Amount\s+([\d,.]+)\s+ETB", RegexOptions.IgnoreCase);
+                var amountMatch = Regex.Match(text, @"Transferred Amount([\d,.]+)", RegexOptions.IgnoreCase);
                 if (amountMatch.Success)
                 {
                     string amountStr = amountMatch.Groups[1].Value.Replace(",", "");
                     decimal.TryParse(amountStr, NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
                 }
 
-                // 4. Extract Internal Reference (Optional validation)
-                var pdfRefMatch = Regex.Match(text, @"Reference No\.\s+\(VAT Invoice No\)\s+([A-Z0-9]+)", RegexOptions.IgnoreCase);
-                string pdfReference = pdfRefMatch.Success ? pdfRefMatch.Groups[1].Value : urlReference;
-
-                Console.WriteLine($"Parsed -> Ref: {pdfReference}, Rec: {receiver}, Acc: {account}, Amt: {amount}");
+                Console.WriteLine($"Parsed -> Ref: {urlReference}, Rec: {receiver}, Acc: {account}, Amt: {amount}");
 
                 if (amount <= 0 || string.IsNullOrWhiteSpace(receiver) || string.IsNullOrWhiteSpace(account))
                 {
+                    Console.WriteLine("CBE Parsing Failed: One or more fields missing.");
                     return null;
                 }
 
                 return new CbeReceipt(
-                    urlReference, // Use the full URL ID as the DB key to prevent reuse
+                    urlReference,
                     receiver,
                     GetLast4Digits(account),
                     amount
