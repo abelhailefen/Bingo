@@ -33,7 +33,7 @@ public class UpdateWithdrawalStatusCommandHandler : IRequestHandler<UpdateWithdr
 
             withdrawal.Status = request.NewStatus;
             withdrawal.AdminComment = request.AdminComment;
-            withdrawal.ProcessedAt = DateTime.UtcNow;
+            withdrawal.ProcessedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
 
             // If Rejected, refund the amount
             if (request.NewStatus == WithdrawalStatusEnum.Rejected)
