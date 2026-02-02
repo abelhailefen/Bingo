@@ -89,30 +89,21 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
         {
             try
             {
-                Console.WriteLine("[TELEBIRR] Starting Text-Based Validation...");
+                Console.WriteLine("[TELEBIRR] Parsing SMS text directly...");
 
-                // 1. Extract Transaction ID
-                // Pattern: Matches 'Transaction ID: ABC123XYZ' or 'ID: ABC123XYZ'
-                var idMatch = Regex.Match(smsText, @"(?:Transaction ID|ID|Ref):\s*([A-Z0-9]+)", RegexOptions.IgnoreCase);
-                string transactionId = idMatch.Success ? idMatch.Groups[1].Value.Trim() : "";
+                // 1. Extract Transaction ID (Look for "DB20F4I8N2" style)
+                var idMatch = Regex.Match(smsText, @"transaction number is\s+([A-Z0-9]+)", RegexOptions.IgnoreCase);
+                string transactionId = idMatch.Success ? idMatch.Groups[1].Value : "";
 
-                // Fallback: If no ID found, try to get it from the URL inside the text
+                // Fallback: If not found, try getting it from the URL
                 if (string.IsNullOrEmpty(transactionId))
                 {
-                    try
-                    {
-                        var url = ExtractUrl(smsText);
-                        transactionId = url.Split('/').Last().Split('?').First();
-                    }
-                    catch { /* ignore */ }
+                    var urlMatch = Regex.Match(smsText, @"receipt/([A-Z0-9]+)");
+                    if (urlMatch.Success) transactionId = urlMatch.Groups[1].Value;
                 }
 
-                // 2. Extract Amount
-                // Pattern: Matches 'ETB 5.00' or '5.00 Birr'
-                var amountMatch = Regex.Match(smsText, @"(?:ETB|Birr)\s*([\d,]+\.?\d*)", RegexOptions.IgnoreCase);
-                if (!amountMatch.Success)
-                    amountMatch = Regex.Match(smsText, @"([\d,]+\.?\d*)\s*(?:ETB|Birr)", RegexOptions.IgnoreCase);
-
+                // 2. Extract Amount (Look for "ETB 5.00")
+                var amountMatch = Regex.Match(smsText, @"ETB\s*([\d,]+\.?\d*)", RegexOptions.IgnoreCase);
                 decimal amount = 0;
                 if (amountMatch.Success)
                 {
@@ -120,29 +111,22 @@ namespace Bingo.Core.Features.PaymentService.Handler.Service
                     decimal.TryParse(cleanAmount, NumberStyles.Any, CultureInfo.InvariantCulture, out amount);
                 }
 
-                // 3. Extract Receiver Info (to verify it was sent to YOU)
-                // Telebirr SMS usually says: "...transferred to [Name] ([Phone])"
-                // We look for the phone number or name to confirm the destination
-                var receiverMatch = Regex.Match(smsText, @"to\s+([^(\n]+)(?:\(([^)]+)\))?", RegexOptions.IgnoreCase);
-                string creditedName = receiverMatch.Success ? receiverMatch.Groups[1].Value.Trim() : "Unknown";
-                string creditedAccount = receiverMatch.Success ? receiverMatch.Groups[2].Value.Trim() : "Unknown";
+                // 3. Extract Receiver Name & Account
+                // Pattern matches: "to Rediet Endale (2519****8491)"
+                var receiverMatch = Regex.Match(smsText, @"to\s+([^(\n]+)\s*\(([^)]+)\)", RegexOptions.IgnoreCase);
+                string creditedName = receiverMatch.Success ? receiverMatch.Groups[1].Value.Trim() : "";
+                string creditedAccount = receiverMatch.Success ? receiverMatch.Groups[2].Value.Trim() : "";
 
-                Console.WriteLine($"[TELEBIRR] Text Parsed -> ID: {transactionId}, Amt: {amount}, Receiver: {creditedName}");
+                Console.WriteLine($"[TELEBIRR] Extracted -> ID: {transactionId}, Name: {creditedName}, Amt: {amount}");
 
-                // Basic Validation
                 if (amount <= 0 || string.IsNullOrEmpty(transactionId))
-                {
-                    Console.WriteLine("[TELEBIRR] Validation failed: Amount or ID not found in text.");
                     return null;
-                }
 
-                // Return the receipt object. 
-                // Note: The Handler will verify if 'creditedName' matches your RECEIVER_NAME
                 return new TelebirrReceipt(transactionId, creditedName, creditedAccount, amount);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TELEBIRR] Error parsing SMS text: {ex.Message}");
+                Console.WriteLine($"[TELEBIRR] Text Parse Error: {ex.Message}");
                 return null;
             }
         }
