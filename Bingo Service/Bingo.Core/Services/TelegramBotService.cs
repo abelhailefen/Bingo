@@ -151,7 +151,7 @@ public class TelegramBotService : BackgroundService
         var chatId = query.Message!.Chat.Id;
         var data = query.Data ?? "";
 
-        // --- SECTION A: ADMIN ACTIONS (From Admin Group) ---
+        // --- SECTION A: ADMIN ACTIONS ---
         if (data.StartsWith("adm_wd_"))
         {
             if (chatId.ToString() != _adminGroupId)
@@ -167,20 +167,42 @@ public class TelegramBotService : BackgroundService
         if (data == "start_deposit")
         {
             var keyboard = new InlineKeyboardMarkup(new[] {
-                new[] { InlineKeyboardButton.WithCallbackData("Telebirr", "pay_telebirr") },
-                new[] { InlineKeyboardButton.WithCallbackData("CBE (Commercial Bank)", "pay_cbe") }
-            });
+            new[] { InlineKeyboardButton.WithCallbackData("Telebirr", "pay_telebirr") },
+            new[] { InlineKeyboardButton.WithCallbackData("CBE (Commercial Bank)", "pay_cbe") }
+        });
             await botClient.SendMessage(chatId, "Select your payment provider:", replyMarkup: keyboard, cancellationToken: ct);
         }
         else if (data == "pay_telebirr")
         {
             _pendingDeposits[chatId] = PaymentProviderEnum.Telebirr;
-            await botClient.SendMessage(chatId, "Please paste the Telebirr SMS or Receipt URL below:", cancellationToken: ct);
+
+            // Updated with Telebirr account info
+            string message = "<b>Telebirr Payment Details:</b>\n\n" +
+                             "Name: <b>Rediet Endale Belay</b>\n" +
+                             "Phone: <code>+251913588491</code>\n\n" +
+                             "Please complete the transfer and then paste the Telebirr SMS or Receipt URL below:";
+
+            await botClient.SendMessage(
+                chatId: chatId,
+                text: message,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                cancellationToken: ct);
         }
         else if (data == "pay_cbe")
         {
             _pendingDeposits[chatId] = PaymentProviderEnum.CBE;
-            await botClient.SendMessage(chatId, "Please paste the CBE Receipt URL/Text below:", cancellationToken: ct);
+
+            // Updated with CBE account info
+            string message = "<b>CBE Payment Details:</b>\n\n" +
+                             "Account Number: <code>1000459382171</code>\n" +
+                             "Name: <b>NAHOM SHIMELIS TESHOME</b>\n\n" +
+                             "Please complete the transfer and then paste the CBE Receipt URL/Text below:";
+
+            await botClient.SendMessage(
+                chatId: chatId,
+                text: message,
+                parseMode: Telegram.Bot.Types.Enums.ParseMode.Html,
+                cancellationToken: ct);
         }
         else if (data == "start_withdrawal")
         {
@@ -201,7 +223,6 @@ public class TelegramBotService : BackgroundService
 
         await botClient.AnswerCallbackQuery(query.Id, cancellationToken: ct);
     }
-
     private async Task HandleAdminApprovalAction(ITelegramBotClient botClient, CallbackQuery query, CancellationToken ct)
     {
         var parts = query.Data!.Split('_'); // adm, wd, [appr/rej], [id]
