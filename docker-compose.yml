@@ -29,22 +29,28 @@ services:
       - "8081:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.yml:/etc/traefik/traefik.yml
       - ./acme.json:/acme.json
     environment:
       - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
       - CLOUDFLARE_EMAIL=capthailefen@gmail.com
-      # This is the key variable for the underlying Go Docker client:
       - DOCKER_API_VERSION=1.44
     command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
       - "--providers.docker.network=bingo-network"
-      # We point to the config file for the rest of the settings
-      - "--configfile=/etc/traefik/traefik.yml"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.cloudflare.acme.email=abelhailefen@gmail.com"
+      - "--certificatesresolvers.cloudflare.acme.storage=/acme.json"
+      - "--certificatesresolvers.cloudflare.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
     networks:
       - bingo-network
-
   bingo-backend:
     image: bingo-backend:1.0.17
     build:
