@@ -21,7 +21,7 @@ services:
 
   traefik:
     # Upgrade to v3.7 which has the built-in fix for Docker 29+
-    image: traefik:v3.7
+    image: traefik:v3.3
     container_name: traefik
     restart: unless-stopped
     ports:
