@@ -34,10 +34,14 @@ services:
     environment:
       - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
       - CLOUDFLARE_EMAIL=capthailefen@gmail.com
-      # CHANGE THIS LINE:
-      - TRAEFIK_PROVIDERS_DOCKER_VERSION=1.44
-      # You can also use this to ensure it points to the socket correctly:
-      - TRAEFIK_PROVIDERS_DOCKER_ENDPOINT=unix:///var/run/docker.sock
+      # This is the key variable for the underlying Go Docker client:
+      - DOCKER_API_VERSION=1.44
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=bingo-network"
+      # We point to the config file for the rest of the settings
+      - "--configfile=/etc/traefik/traefik.yml"
     networks:
       - bingo-network
 
