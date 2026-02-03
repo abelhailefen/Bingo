@@ -74,13 +74,17 @@ namespace Bingo.Core.Features.Gameplay.Handler
                 Prize = room.CardPrice * playerCount * 0.87m,
                 Verified = true
             };
+            var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
+            if (user == null)
+                return Response<bool>.Error("User not found");
 
+            user.Balance += win.Prize;
+            await _repository.UpdateAsync<User>(user);
             await _repository.AddAsync(win);
             room.Status = RoomStatusEnum.Completed;
             await _repository.UpdateAsync(room);
             await _repository.SaveChanges();
 
-            var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
             await _hubContext.Clients.Group(request.RoomId.ToString())
                 .WinClaimed(request.RoomId, user.Username, "LINE BINGO", win.Prize);
 
