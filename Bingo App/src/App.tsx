@@ -20,51 +20,49 @@ const App = () => {
     useEffect(() => {
         const initTelegramAuth = async () => {
             const telegram = (window as any).Telegram?.WebApp;
-            
-            // Debug: Show what Telegram object we have
-            addLog('[Debug] Telegram object exists: ' + !!telegram);
-            if (telegram) {
-                addLog('[Debug] initData length: ' + (telegram.initData?.length || 0));
-                addLog('[Debug] initDataUnsafe exists: ' + !!telegram.initDataUnsafe);
-                addLog('[Debug] User from unsafe: ' + JSON.stringify(telegram.initDataUnsafe?.user || null));
-            }
 
-            if (telegram?.initData) {
+            if (telegram) {
+                // IMPORTANT: Call ready() immediately so Telegram knows the app is active
                 telegram.ready();
                 telegram.expand();
-                addLog('[Auth] Telegram initData found, attempting auth...');
-                try {
-                    const response = await telegramInit(telegram.initData);
-                    addLog('[Auth] Response: ' + JSON.stringify(response));
-                    // Check responseStatus === 0 (Success) and !isFailed
-                    if (!response.isFailed && response.data) {
-                        addLog('[Auth] Success! User ID: ' + response.data.userId);
-                        setAuthToken(response.data.token);
-                        localStorage.setItem('bingo_token', response.data.token);
-                        
-                        const id = response.data.userId;
-                        setUserId(id);
-                        setView('wager');
-                        return;
-                    } else {
-                        addLog('[Auth] Auth failed: ' + response.message);
-                    }
-                } catch (error) {
-                    addLog('[Auth] API Error: ' + error);
+
+                // If initData is missing immediately, wait a tiny bit for injection
+                if (!telegram.initData && !telegram.initDataUnsafe?.user) {
+                    addLog('[Auth] Data missing, retrying in 100ms...');
+                    await new Promise(resolve => setTimeout(resolve, 100));
                 }
-            } else {
-                addLog('[Auth] No Telegram initData, using fallback');
+
+                addLog('[Debug] Telegram object exists');
+                addLog('[Debug] initData length: ' + (telegram.initData?.length || 0));
+
+                if (telegram.initData) {
+                    addLog('[Auth] Attempting API authentication...');
+                    try {
+                        const response = await telegramInit(telegram.initData);
+                        if (!response.isFailed && response.data) {
+                            addLog('[Auth] Success! User ID: ' + response.data.userId);
+                            setAuthToken(response.data.token);
+                            localStorage.setItem('bingo_token', response.data.token);
+                            setUserId(response.data.userId);
+                            setView('wager');
+                            return;
+                        }
+                    } catch (error) {
+                        addLog('[Auth] API Error: ' + error);
+                    }
+                }
             }
-            
-            // Fallback: If we have user data from initDataUnsafe (keyboard button), use that
+
+            // Fallback Logic
             const fallbackId = telegram?.initDataUnsafe?.user?.id || 12345;
             if (fallbackId !== 12345) {
-                addLog('[Auth] Using authenticated Telegram user from unsafe: ' + fallbackId);
+                addLog('[Auth] Using User ID from Unsafe Data: ' + fallbackId);
+                setUserId(fallbackId);
+                setView('wager');
             } else {
-                addLog('[Auth] Using dev fallback ID: 12345');
+                addLog('[Auth] FATAL: No Telegram data found.');
+                // You might want to show an "Open from Telegram" error here instead of fallback 12345
             }
-            setUserId(fallbackId);
-            setView('wager');
         };
         initTelegramAuth();
     }, []);

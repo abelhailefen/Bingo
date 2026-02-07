@@ -95,31 +95,36 @@ public class TelegramBotService : BackgroundService
 
         if (user == null || string.IsNullOrEmpty(user.PhoneNumber))
         {
-            var contactButton = new ReplyKeyboardMarkup(new[] { KeyboardButton.WithRequestContact("📲 Register & Share Contact") }) { ResizeKeyboard = true, OneTimeKeyboard = true };
-            await botClient.SendMessage(message.Chat.Id, "Welcome! Please register.", replyMarkup: contactButton, cancellationToken: ct);
+            var contactButton = new ReplyKeyboardMarkup(new[] {
+            KeyboardButton.WithRequestContact("📲 Register & Share Contact")
+        })
+            { ResizeKeyboard = true, OneTimeKeyboard = true };
+
+            await botClient.SendMessage(message.Chat.Id, "Welcome! Please register to start playing.", replyMarkup: contactButton, cancellationToken: ct);
         }
         else
         {
-            // Set the menu button (Play) and show keyboard
             var webAppUrl = _config["TelegramBot:WebAppUrl"]?.Trim();
+
+            // 1. Set the Menu Button (The "Play" button next to the attachment icon)
+            // This is the MOST reliable way to open a WebApp with full Auth data.
             if (!string.IsNullOrEmpty(webAppUrl))
-                await botClient.SetChatMenuButton(message.Chat.Id, new MenuButtonWebApp { Text = "Play", WebApp = new WebAppInfo { Url = webAppUrl } }, ct);
-
-            // Send welcome message with inline Play button for reliable Web App launching
-            var inlineKeyboard = new InlineKeyboardMarkup(new[]
             {
-                new[] { InlineKeyboardButton.WithWebApp("🎮 Play Bingo", new WebAppInfo { Url = webAppUrl }) }
-            });
+                await botClient.SetChatMenuButton(message.Chat.Id, new MenuButtonWebApp
+                {
+                    Text = "Play",
+                    WebApp = new WebAppInfo { Url = webAppUrl }
+                }, ct);
+            }
 
+            // 2. Consolidate into ONE message with the persistent Keyboard
+            // This removes the inline button message that was cluttering the chat
             await botClient.SendMessage(
-                message.Chat.Id, 
-                $"Welcome back! 💰 Balance: {user.Balance} ETB\n\nTap the button below or use the menu to play:", 
-                replyMarkup: inlineKeyboard, 
+                message.Chat.Id,
+                $"Welcome back! 💰 Balance: {user.Balance} ETB\n\nSelect an option from the menu below:",
+                replyMarkup: GetMenuKeyboard(), // This contains your Keyboard "Play Bingo" button
                 cancellationToken: ct
             );
-            
-            // Still set the regular keyboard for Deposit/Withdraw
-            await botClient.SendMessage(message.Chat.Id, "Quick Actions:", replyMarkup: GetMenuKeyboard(), cancellationToken: ct);
         }
     }
 
