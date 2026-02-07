@@ -62,8 +62,7 @@ public class RoomManagerService : BackgroundService
             var room = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
             if (room == null || room.Status == RoomStatusEnum.Completed) return;
 
-             // Ensure bots are added if needed
-            await AddBotsToRoom(roomId, repo);
+
 
             DateTime scheduledTime = room.ScheduledStartTime ?? DateTime.UtcNow;
             TimeSpan delay = scheduledTime - DateTime.UtcNow;
@@ -88,6 +87,9 @@ public class RoomManagerService : BackgroundService
 
             try
             {
+                // Ensure bots are added right before game starts
+                await AddBotsToRoom(roomId, repo);
+
                 // STEP C: Start the Game
                 room.Status = RoomStatusEnum.InProgress;
                 room.StartedAt = DateTime.UtcNow;
@@ -160,7 +162,18 @@ public class RoomManagerService : BackgroundService
                 }
                 catch 
                 { 
-                     // Ignore dupes and continue 
+                     // Creation failed (likely concurrency or collision). 
+                     // Try to fetch existing bot with this name in case another thread created it.
+                     var existing = await repo.FindOneAsync<User>(u => u.Username == botName);
+                     if (existing != null)
+                     {
+                         botUser = existing;
+                     }
+                     else
+                     {
+                         // If we can't create or find it, skip this bot.
+                         continue;
+                     }
                 }
             }
 
