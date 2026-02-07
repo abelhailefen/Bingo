@@ -103,6 +103,14 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
 
             }
 
+            // 2.5 DEFENSIVE: Ensure User exists before adding to room_players
+            // This prevents FK violations if auth didn't create the user
+            var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
+            if (user == null)
+            {
+                return Response<JoinLobbyResponse>.Error($"User {request.UserId} not found. Please authenticate first.");
+            }
+
             // 3. IMPORTANT: Ensure the player is linked to THIS specific room.
             // We check RoomId AND UserId to ensure we aren't looking at old Completed rooms.
             var existingPlayer = await _repository.FindOneAsync<RoomPlayer>(rp =>

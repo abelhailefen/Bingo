@@ -18,9 +18,12 @@ const App = () => {
             if (telegram?.initData) {
                 telegram.ready();
                 telegram.expand();
+                console.log('[Auth] Telegram initData found, attempting auth...');
                 try {
                     const response = await telegramInit(telegram.initData);
+                    console.log('[Auth] Response:', response);
                     if (response.success && response.data) {
+                        console.log('[Auth] Success! User ID:', response.data.userId);
                         setAuthToken(response.data.token);
                         localStorage.setItem('bingo_token', response.data.token);
                         
@@ -28,10 +31,14 @@ const App = () => {
                         setUserId(id);
                         setView('wager');
                         return;
+                    } else {
+                        console.error('[Auth] Auth failed or no data:', response);
                     }
                 } catch (error) {
-                    console.error('Auth API Error:', error);
+                    console.error('[Auth] API Error:', error);
                 }
+            } else {
+                console.log('[Auth] No Telegram initData, using fallback');
             }
             // Local development fallback
             const fallbackId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || 12345;
