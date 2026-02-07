@@ -16,7 +16,14 @@ api.interceptors.request.use((config) => {
 });
 
 // Auth
-export const telegramInit = async (initData: string): Promise<ApiResponse<string>> => {
+export interface TelegramInitResponse {
+    token: string;
+    userId: number;
+    username: string;
+    phoneNumber: string;
+}
+
+export const telegramInit = async (initData: string): Promise<ApiResponse<TelegramInitResponse>> => {
     const response = await api.post('/auth/telegram-init', { initData });
     return response.data;
 };

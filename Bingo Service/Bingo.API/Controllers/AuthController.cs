@@ -18,8 +18,10 @@ public class AuthController : ControllerBase
         _mediator = mediator;
     }
 
+using Bingo.Core.Auth.Contract.Response;
+
     [HttpPost("telegram-init")]
-    public async Task<ActionResult<Response<string>>> TelegramInit([FromBody] TelegramInitRequest request)
+    public async Task<ActionResult<Response<TelegramInitResponse>>> TelegramInit([FromBody] TelegramInitRequest request)
     {
         var command = new TelegramInitCommand(request.InitData);
         var result = await _mediator.Send(command);

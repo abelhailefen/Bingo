@@ -21,12 +21,11 @@ const App = () => {
                 try {
                     const response = await telegramInit(telegram.initData);
                     if (response.success && response.data) {
-                        setAuthToken(response.data);
-                        localStorage.setItem('bingo_token', response.data);
-                        // Extracting ID from token or using telegram user object
-                        const idMatch = response.data.match(/\d+$/);
-                        const id = idMatch ? parseInt(idMatch[0]) : telegram.initDataUnsafe?.user?.id;
-                        setUserId(id || 999);
+                        setAuthToken(response.data.token);
+                        localStorage.setItem('bingo_token', response.data.token);
+                        
+                        const id = response.data.userId;
+                        setUserId(id);
                         setView('wager');
                         return;
                     }
