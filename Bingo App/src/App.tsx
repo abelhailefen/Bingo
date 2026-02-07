@@ -20,6 +20,14 @@ const App = () => {
     useEffect(() => {
         const initTelegramAuth = async () => {
             const telegram = (window as any).Telegram?.WebApp;
+            
+            // Debug: Show what Telegram object we have
+            addLog('[Debug] Telegram object exists: ' + !!telegram);
+            if (telegram) {
+                addLog('[Debug] initData length: ' + (telegram.initData?.length || 0));
+                addLog('[Debug] initDataUnsafe exists: ' + !!telegram.initDataUnsafe);
+                addLog('[Debug] User from unsafe: ' + JSON.stringify(telegram.initDataUnsafe?.user || null));
+            }
 
             if (telegram?.initData) {
                 telegram.ready();
