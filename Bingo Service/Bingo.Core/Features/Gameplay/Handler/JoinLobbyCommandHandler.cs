@@ -17,14 +17,12 @@ namespace Bingo.Core.Features.Gameplay.Handler;
 public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Response<JoinLobbyResponse>>
 {
     private readonly IBingoRepository _repository;
-    private readonly IRoomManagerSignal _signal;
     private readonly ILogger<JoinLobbyCommandHandler> _logger;  
 
     private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
-    public JoinLobbyCommandHandler(IBingoRepository repository, IRoomManagerSignal signal, ILogger<JoinLobbyCommandHandler> logger)
+    public JoinLobbyCommandHandler(IBingoRepository repository,  ILogger<JoinLobbyCommandHandler> logger)
     {
         _repository = repository;
-        _signal = signal;
         _logger = logger;
 
     }
@@ -32,40 +30,7 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
     {
         await _semaphore.WaitAsync(cancellationToken);
         _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
-
-
-
-
+   
 
         try
         {
@@ -99,7 +64,6 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                 };
                 await _repository.AddAsync(room);
                 await _repository.SaveChanges();
-                await _signal.SignalNewRoom(room.RoomId, room.CardPrice);
 
             }
 
