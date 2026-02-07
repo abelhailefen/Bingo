@@ -40,16 +40,13 @@ public class TelegramBotService : BackgroundService
         _adminGroupId = _config["TelegramBot:AdminGroupId"] ?? "";
     }
 
-    // --- HELPER TO GET THE REUSABLE KEYBOARD ---
     private IReplyMarkup GetMenuKeyboard()
     {
-        var webAppUrl = _config["TelegramBot:WebAppUrl"]?.Trim();
-        var buttons = new List<KeyboardButton[]>();
-
-        if (!string.IsNullOrEmpty(webAppUrl) && Uri.IsWellFormedUriString(webAppUrl, UriKind.Absolute))
-            buttons.Add(new[] { KeyboardButton.WithWebApp(BTN_PLAY, new WebAppInfo { Url = webAppUrl }) });
-
-        buttons.Add(new[] { new KeyboardButton(BTN_DEPOSIT), new KeyboardButton(BTN_WITHDRAW) });
+        // Remove Play button from keyboard - using inline button instead for better Web App auth
+        var buttons = new List<KeyboardButton[]>
+        {
+            new[] { new KeyboardButton(BTN_DEPOSIT), new KeyboardButton(BTN_WITHDRAW) }
+        };
 
         return new ReplyKeyboardMarkup(buttons) { ResizeKeyboard = true, IsPersistent = true };
     }
@@ -105,7 +102,21 @@ public class TelegramBotService : BackgroundService
             if (!string.IsNullOrEmpty(webAppUrl))
                 await botClient.SetChatMenuButton(message.Chat.Id, new MenuButtonWebApp { Text = "Play", WebApp = new WebAppInfo { Url = webAppUrl } }, ct);
 
-            await botClient.SendMessage(message.Chat.Id, $"Welcome back! 💰 Balance: {user.Balance} ETB", replyMarkup: GetMenuKeyboard(), cancellationToken: ct);
+            // Send welcome message with inline Play button for reliable Web App launching
+            var inlineKeyboard = new InlineKeyboardMarkup(new[]
+            {
+                new[] { InlineKeyboardButton.WithWebApp("🎮 Play Bingo", new WebAppInfo { Url = webAppUrl }) }
+            });
+
+            await botClient.SendMessage(
+                message.Chat.Id, 
+                $"Welcome back! 💰 Balance: {user.Balance} ETB\n\nTap the button below or use the menu to play:", 
+                replyMarkup: inlineKeyboard, 
+                cancellationToken: ct
+            );
+            
+            // Still set the regular keyboard for Deposit/Withdraw
+            await botClient.SendMessage(message.Chat.Id, "Quick Actions:", replyMarkup: GetMenuKeyboard(), cancellationToken: ct);
         }
     }
 
