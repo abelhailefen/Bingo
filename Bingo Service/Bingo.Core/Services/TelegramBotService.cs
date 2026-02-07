@@ -13,7 +13,6 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
-// ALIASES
 using BingoUser = Bingo.Core.Entities.User;
 
 namespace Bingo.Core.Services;
@@ -24,7 +23,6 @@ public class TelegramBotService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ITelegramBotClient _botClient;
     private readonly string _adminGroupId;
-    private readonly string _webAppUrl;
 
     private static readonly ConcurrentDictionary<long, PaymentProviderEnum> _pendingDeposits = new();
     private static readonly ConcurrentDictionary<long, bool> _pendingWithdrawals = new();
@@ -39,18 +37,21 @@ public class TelegramBotService : BackgroundService
         _scopeFactory = scopeFactory;
         _botClient = botClient;
         _adminGroupId = _config["TelegramBot:AdminGroupId"] ?? "";
-        _webAppUrl = _config["TelegramBot:WebAppUrl"]?.Trim() ?? "";
-
     }
 
-    private IReplyMarkup GetMenuKeyboard()
+    private IReplyMarkup GetMenuKeyboard(long userId)
     {
         var webAppUrl = _config["TelegramBot:WebAppUrl"]?.Trim();
         var buttons = new List<KeyboardButton[]>();
 
-        // Add Play button back - frontend now handles missing initData gracefully
-        if (!string.IsNullOrEmpty(webAppUrl) && Uri.IsWellFormedUriString(webAppUrl, UriKind.Absolute))
-            buttons.Add(new[] { KeyboardButton.WithWebApp(BTN_PLAY, new WebAppInfo { Url = _webAppUrl }) });
+        if (!string.IsNullOrEmpty(webAppUrl))
+        {
+            // Bake the UserID into the URL as a fallback parameter
+            var separator = webAppUrl.Contains("?") ? "&" : "?";
+            var urlWithId = $"{webAppUrl}{separator}u={userId}";
+
+            buttons.Add(new[] { KeyboardButton.WithWebApp(BTN_PLAY, new WebAppInfo { Url = urlWithId }) });
+        }
 
         buttons.Add(new[] { new KeyboardButton(BTN_DEPOSIT), new KeyboardButton(BTN_WITHDRAW) });
 
@@ -75,6 +76,7 @@ public class TelegramBotService : BackgroundService
         if (update.Message is not { Text: { } messageText } message) return;
 
         var chatId = message.Chat.Id;
+        var userId = message.From!.Id;
 
         if (_pendingDeposits.TryRemove(chatId, out var provider)) { await ProcessReceipt(botClient, message, provider, ct); return; }
         if (_pendingWithdrawals.TryRemove(chatId, out _)) { await ProcessWithdrawal(botClient, message, ct); return; }
@@ -83,7 +85,7 @@ public class TelegramBotService : BackgroundService
         {
             case "/start": await HandleStartCommand(botClient, message, ct); break;
             case BTN_DEPOSIT: await InitiateDeposit(botClient, chatId, ct); break;
-            case BTN_WITHDRAW: await InitiateWithdrawal(botClient, message.From!.Id, chatId, ct); break;
+            case BTN_WITHDRAW: await InitiateWithdrawal(botClient, userId, chatId, ct); break;
             case "/admin_users":
                 if (chatId.ToString() == _adminGroupId) await HandleListAllUsers(botClient, chatId, ct);
                 break;
@@ -98,34 +100,19 @@ public class TelegramBotService : BackgroundService
 
         if (user == null || string.IsNullOrEmpty(user.PhoneNumber))
         {
-            var contactButton = new ReplyKeyboardMarkup(new[] {
-            KeyboardButton.WithRequestContact("📲 Register & Share Contact")
-        })
-            { ResizeKeyboard = true, OneTimeKeyboard = true };
-
-            await botClient.SendMessage(message.Chat.Id, "Welcome! Please register to start playing.", replyMarkup: contactButton, cancellationToken: ct);
+            var contactButton = new ReplyKeyboardMarkup(new[] { KeyboardButton.WithRequestContact("📲 Register & Share Contact") }) { ResizeKeyboard = true, OneTimeKeyboard = true };
+            await botClient.SendMessage(message.Chat.Id, "Welcome! Please register.", replyMarkup: contactButton, cancellationToken: ct);
         }
         else
         {
             var webAppUrl = _config["TelegramBot:WebAppUrl"]?.Trim();
-
-            // 1. Set the Menu Button (The "Play" button next to the attachment icon)
-            // This is the MOST reliable way to open a WebApp with full Auth data.
             if (!string.IsNullOrEmpty(webAppUrl))
-            {
-                await botClient.SetChatMenuButton(message.Chat.Id, new MenuButtonWebApp
-                {
-                    Text = "Play",
-                    WebApp = new WebAppInfo { Url = webAppUrl }
-                }, ct);
-            }
+                await botClient.SetChatMenuButton(message.Chat.Id, new MenuButtonWebApp { Text = "Play", WebApp = new WebAppInfo { Url = webAppUrl } }, ct);
 
-            // 2. Consolidate into ONE message with the persistent Keyboard
-            // This removes the inline button message that was cluttering the chat
             await botClient.SendMessage(
                 message.Chat.Id,
-                $"Welcome back! 💰 Balance: {user.Balance} ETB\n\nSelect an option from the menu below:",
-                replyMarkup: GetMenuKeyboard(), // This contains your Keyboard "Play Bingo" button
+                $"Welcome back! 💰 Balance: {user.Balance} ETB",
+                replyMarkup: GetMenuKeyboard(user.UserId),
                 cancellationToken: ct
             );
         }
@@ -138,10 +125,8 @@ public class TelegramBotService : BackgroundService
         var user = await repo.FindOneAsync<BingoUser>(u => u.UserId == userId);
 
         if (user == null) return;
-
         _pendingWithdrawals[chatId] = true;
-        // REMOVED ForceReplyMarkup to keep your persistent keyboard visible
-        await botClient.SendMessage(chatId, $"Current Balance: {user.Balance} ETB\nEnter amount to withdraw (numbers only):", cancellationToken: ct);
+        await botClient.SendMessage(chatId, $"Current Balance: {user.Balance} ETB\nEnter amount to withdraw:", cancellationToken: ct);
     }
 
     private async Task ProcessWithdrawal(ITelegramBotClient botClient, Message message, CancellationToken ct)
@@ -150,7 +135,7 @@ public class TelegramBotService : BackgroundService
         {
             if (!decimal.TryParse(message.Text, out var amount))
             {
-                await botClient.SendMessage(message.Chat.Id, "❌ Invalid amount. Withdrawal cancelled.", replyMarkup: GetMenuKeyboard(), cancellationToken: ct);
+                await botClient.SendMessage(message.Chat.Id, "❌ Invalid amount.", replyMarkup: GetMenuKeyboard(message.From!.Id), cancellationToken: ct);
                 return;
             }
 
@@ -158,14 +143,10 @@ public class TelegramBotService : BackgroundService
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             var result = await mediator.Send(new CreateWithdrawalRequestCommand(message.From!.Id, amount), ct);
 
-            string response = (result != null && !result.IsFailed)
-                ? $"✅ Submitted! {result.Message}"
-                : $"❌ Request failed: {result?.Message}";
-
-            // Always send the menu keyboard back with the result
-            await botClient.SendMessage(message.Chat.Id, response, replyMarkup: GetMenuKeyboard(), cancellationToken: ct);
+            string response = (result != null && !result.IsFailed) ? $"✅ Submitted!" : $"❌ Failed: {result?.Message}";
+            await botClient.SendMessage(message.Chat.Id, response, replyMarkup: GetMenuKeyboard(message.From!.Id), cancellationToken: ct);
         }
-        catch (Exception ex) { await botClient.SendMessage(message.Chat.Id, $"❌ Error: {ex.Message}", replyMarkup: GetMenuKeyboard(), cancellationToken: ct); }
+        catch (Exception ex) { await botClient.SendMessage(message.Chat.Id, $"❌ Error: {ex.Message}", replyMarkup: GetMenuKeyboard(message.From!.Id), cancellationToken: ct); }
     }
 
     private async Task ProcessReceipt(ITelegramBotClient botClient, Message message, PaymentProviderEnum provider, CancellationToken ct)
@@ -174,20 +155,17 @@ public class TelegramBotService : BackgroundService
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
         var result = await mediator.Send(new ProcessPaymentCommand(message.From!.Id, message.Text!, provider), ct);
 
-        string response = (result != null && !result.IsFailed)
-            ? $"✅ Success! {result.Message}"
-            : $"❌ Failed: {result?.Message}";
-
-        await botClient.SendMessage(message.Chat.Id, response, replyMarkup: GetMenuKeyboard(), cancellationToken: ct);
+        string response = (result != null && !result.IsFailed) ? "✅ Success!" : $"❌ Failed: {result?.Message}";
+        await botClient.SendMessage(message.Chat.Id, response, replyMarkup: GetMenuKeyboard(message.From!.Id), cancellationToken: ct);
     }
 
     private async Task InitiateDeposit(ITelegramBotClient botClient, long chatId, CancellationToken ct)
     {
         var keyboard = new InlineKeyboardMarkup(new[] {
             new[] { InlineKeyboardButton.WithCallbackData("Telebirr", "pay_telebirr") },
-            new[] { InlineKeyboardButton.WithCallbackData("CBE (Commercial Bank)", "pay_cbe") }
+            new[] { InlineKeyboardButton.WithCallbackData("CBE", "pay_cbe") }
         });
-        await botClient.SendMessage(chatId, "Select your payment provider:", replyMarkup: keyboard, cancellationToken: ct);
+        await botClient.SendMessage(chatId, "Select payment provider:", replyMarkup: keyboard, cancellationToken: ct);
     }
 
     private async Task HandleCallbackQuery(ITelegramBotClient botClient, CallbackQuery query, CancellationToken ct)
@@ -198,12 +176,12 @@ public class TelegramBotService : BackgroundService
         if (query.Data == "pay_telebirr")
         {
             _pendingDeposits[chatId] = PaymentProviderEnum.Telebirr;
-            await botClient.SendMessage(chatId, "<b>Telebirr:</b> Rediet Endale | +251913588491\nPaste SMS:", ParseMode.Html, cancellationToken: ct);
+            await botClient.SendMessage(chatId, "Telebirr: Rediet | +251913588491\nPaste SMS:", ParseMode.Html, cancellationToken: ct);
         }
         else if (query.Data == "pay_cbe")
         {
             _pendingDeposits[chatId] = PaymentProviderEnum.CBE;
-            await botClient.SendMessage(chatId, "<b>CBE:</b> 1000459382171 | NAHOM SHIMELIS\nPaste Receipt:", ParseMode.Html, cancellationToken: ct);
+            await botClient.SendMessage(chatId, "CBE: 1000459382171 | NAHOM\nPaste Receipt:", ParseMode.Html, cancellationToken: ct);
         }
         await botClient.AnswerCallbackQuery(query.Id, cancellationToken: ct);
     }
@@ -222,28 +200,25 @@ public class TelegramBotService : BackgroundService
         else { user.PhoneNumber = contact.PhoneNumber; await repo.UpdateAsync(user); }
 
         await repo.SaveChanges();
-        await botClient.SendMessage(message.Chat.Id, "✅ Registered!", replyMarkup: GetMenuKeyboard(), cancellationToken: ct);
+        await botClient.SendMessage(message.Chat.Id, "✅ Registered!", replyMarkup: GetMenuKeyboard(user.UserId), cancellationToken: ct);
     }
 
     private async Task HandleAdminApprovalAction(ITelegramBotClient botClient, CallbackQuery query, CancellationToken ct)
     {
         var parts = query.Data!.Split('_');
-        var action = parts[2];
         var requestId = int.Parse(parts[3]);
+        var action = parts[2];
 
         using var scope = _scopeFactory.CreateScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
         var repo = scope.ServiceProvider.GetRequiredService<IBingoRepository>();
 
         var newStatus = action == "appr" ? WithdrawalStatusEnum.Approved : WithdrawalStatusEnum.Rejected;
-        var result = await mediator.Send(new UpdateWithdrawalStatusCommand(requestId, newStatus, $"Admin @{query.From.Username}"), ct);
+        await mediator.Send(new UpdateWithdrawalStatusCommand(requestId, newStatus, $"Admin @{query.From.Username}"), ct);
 
-        if (result.Data)
-        {
-            await botClient.EditMessageText(query.Message!.Chat.Id, query.Message.MessageId, query.Message.Text + $"\n\n✅ Request {newStatus}", cancellationToken: ct);
-            var req = await repo.FindOneAsync<WithdrawalRequest>(w => w.WithdrawalRequestId == requestId);
-            if (req != null) await botClient.SendMessage(req.UserId, $"Withdrawal {newStatus}!", replyMarkup: GetMenuKeyboard(), cancellationToken: ct);
-        }
+        await botClient.EditMessageText(query.Message!.Chat.Id, query.Message.MessageId, query.Message.Text + $"\n\n✅ {newStatus}", cancellationToken: ct);
+        var req = await repo.FindOneAsync<WithdrawalRequest>(w => w.WithdrawalRequestId == requestId);
+        if (req != null) await botClient.SendMessage(req.UserId, $"Withdrawal {newStatus}!", replyMarkup: GetMenuKeyboard(req.UserId), cancellationToken: ct);
     }
 
     private async Task HandleListAllUsers(ITelegramBotClient botClient, long chatId, CancellationToken ct)

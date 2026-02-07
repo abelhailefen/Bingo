@@ -10,62 +10,76 @@ const App = () => {
     const [, setAuthToken] = useState<string | null>(null);
     const [wager, setWager] = useState<number | null>(null);
     const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
-    const [debugLogs, setDebugLogs] = useState<string[]>([]);
-
-    const addLog = (msg: string) => {
-        setDebugLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`]);
-        console.log(msg);
-    };
 
     useEffect(() => {
         const initTelegramAuth = async () => {
-            const telegram = (window as any).Telegram?.WebApp;
+            const tg = (window as any).Telegram?.WebApp;
 
-            if (telegram) {
-                // IMPORTANT: Call ready() immediately so Telegram knows the app is active
-                telegram.ready();
-                telegram.expand();
+            // 1. FAST PATH: Check Local Storage (Instant)
+            const savedId = localStorage.getItem('bingo_user_id');
+            const savedToken = localStorage.getItem('bingo_token');
+            if (savedId && savedToken) {
+                setUserId(parseInt(savedId));
+                setAuthToken(savedToken);
+                setView('wager');
+                // We don't return here; we continue to check if we can refresh the token
+            }
 
-                // If initData is missing immediately, wait a tiny bit for injection
-                if (!telegram.initData && !telegram.initDataUnsafe?.user) {
-                    addLog('[Auth] Data missing, retrying in 100ms...');
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
+            // 2. BACKUP PATH: Check URL for the ?u= ID we added in C#
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlUserId = urlParams.get('u');
 
-                addLog('[Debug] Telegram object exists');
-                addLog('[Debug] initData length: ' + (telegram.initData?.length || 0));
+            if (tg) {
+                tg.ready();
+                tg.expand();
 
-                if (telegram.initData) {
-                    addLog('[Auth] Attempting API authentication...');
+                // 3. SECURE PATH: Try to get a fresh token from Telegram InitData
+                if (tg.initData && tg.initData.length > 0) {
                     try {
-                        const response = await telegramInit(telegram.initData);
+                        const response = await telegramInit(tg.initData);
                         if (!response.isFailed && response.data) {
-                            addLog('[Auth] Success! User ID: ' + response.data.userId);
-                            setAuthToken(response.data.token);
-                            localStorage.setItem('bingo_token', response.data.token);
-                            setUserId(response.data.userId);
+                            const freshId = response.data.userId;
+                            const freshToken = response.data.token;
+
+                            // Save for next time
+                            localStorage.setItem('bingo_user_id', freshId.toString());
+                            localStorage.setItem('bingo_token', freshToken);
+
+                            setUserId(freshId);
+                            setAuthToken(freshToken);
                             setView('wager');
                             return;
                         }
                     } catch (error) {
-                        addLog('[Auth] API Error: ' + error);
+                        console.error("Secure auth failed, using fallbacks");
                     }
+                }
+
+                // 4. TELEGRAM UNSAFE PATH: If secure auth failed, use the ID Telegram provides anyway
+                const telegramUserId = tg.initDataUnsafe?.user?.id;
+                if (telegramUserId) {
+                    setUserId(telegramUserId);
+                    if (view === 'auth') setView('wager');
+                    return;
                 }
             }
 
-            // Fallback Logic
-            const fallbackId = telegram?.initDataUnsafe?.user?.id || 12345;
-            if (fallbackId !== 12345) {
-                addLog('[Auth] Using User ID from Unsafe Data: ' + fallbackId);
-                setUserId(fallbackId);
+            // 5. URL FALLBACK: If we have the ID from the URL, use it
+            if (urlUserId) {
+                setUserId(parseInt(urlUserId));
+                if (view === 'auth') setView('wager');
+                return;
+            }
+
+            // FINAL FALLBACK: For local browser testing only
+            if (!userId) {
+                setUserId(12345);
                 setView('wager');
-            } else {
-                addLog('[Auth] FATAL: No Telegram data found.');
-                // You might want to show an "Open from Telegram" error here instead of fallback 12345
             }
         };
+
         initTelegramAuth();
-    }, []);
+    }, [view, userId]);
 
     const handleWagerSelected = (selectedWager: number) => {
         setWager(selectedWager);
@@ -109,21 +123,8 @@ const App = () => {
                 <GameRoom
                     roomId={activeRoomId}
                     userId={userId}
-                    onLeave={handleBackToWager} // Redirects to Wager Selection
+                    onLeave={handleBackToWager}
                 />
-            )}
-
-            {/* DEBUG OVERLAY - Remove after debugging */}
-            {debugLogs.length > 0 && (
-                <div className="fixed bottom-0 left-0 right-0 bg-black/90 text-white p-2 max-h-48 overflow-y-auto text-xs font-mono z-50">
-                    <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-yellow-400">DEBUG LOGS (User ID: {userId})</span>
-                        <button onClick={() => setDebugLogs([])} className="text-red-400">Clear</button>
-                    </div>
-                    {debugLogs.map((log, i) => (
-                        <div key={i} className="border-b border-white/10 py-1">{log}</div>
-                    ))}
-                </div>
             )}
         </div>
     );
