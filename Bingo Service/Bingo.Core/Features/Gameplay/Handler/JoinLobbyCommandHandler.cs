@@ -2,6 +2,7 @@
 using Bingo.Core.Entities;
 using Bingo.Core.Entities.Enums;
 using Bingo.Core.Features.Gameplay.Contract.Command;
+using Bingo.Core.Features.Gameplay.Contract.Service;
 using Bingo.Core.Features.Gameplay.DTOs;
 using Bingo.Core.Models;
 using MediatR;
@@ -15,10 +16,14 @@ namespace Bingo.Core.Features.Gameplay.Handler;
 public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Response<JoinLobbyResponse>>
 {
     private readonly IBingoRepository _repository;
+    private readonly IRoomManagerSignal _signal;
+
     private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
-    public JoinLobbyCommandHandler(IBingoRepository repository)
+    public JoinLobbyCommandHandler(IBingoRepository repository, IRoomManagerSignal signal)
     {
         _repository = repository;
+        _signal = signal;
+
     }
     public async Task<Response<JoinLobbyResponse>> Handle(JoinLobbyCommand request, CancellationToken cancellationToken)
     {
@@ -54,6 +59,8 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                 };
                 await _repository.AddAsync(room);
                 await _repository.SaveChanges();
+                await _signal.SignalNewRoom(room.RoomId, room.CardPrice);
+
             }
 
             // 3. IMPORTANT: Ensure the player is linked to THIS specific room.

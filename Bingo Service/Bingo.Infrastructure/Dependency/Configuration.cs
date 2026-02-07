@@ -1,5 +1,6 @@
 ﻿using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities.Enums;
+using Bingo.Core.Features.Gameplay.Contract.Service;
 using Bingo.Core.Features.PaymentService.Contract.Service;
 using Bingo.Core.Features.PaymentService.Handler.Service;
 using Bingo.Infrastructure.Context;
@@ -8,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
-
+using Bingo.Core.Services;
 using Npgsql.NameTranslation;
 using System;
 using System.Collections.Generic;
@@ -40,6 +41,7 @@ namespace Bingo.Infrastructure.Dependency
 
             services.AddScoped<IBingoRepository, BingoRepository>();
             services.AddScoped<IPaymentService, PaymentService>();
+            services.AddSingleton<IRoomManagerSignal, RoomManagerSignal>();
             services.AddHttpClient();
             return services;
         }
