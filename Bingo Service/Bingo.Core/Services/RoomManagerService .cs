@@ -88,7 +88,7 @@ public class RoomManagerService : BackgroundService
             try
             {
                 // Ensure bots are added right before game starts
-                //await AddBotsToRoom(roomId, repo);
+                await AddBotsToRoom(roomId, repo);
 
                 // STEP C: Start the Game
                 room.Status = RoomStatusEnum.InProgress;
