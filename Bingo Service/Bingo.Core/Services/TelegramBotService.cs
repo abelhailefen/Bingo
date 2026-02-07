@@ -42,11 +42,14 @@ public class TelegramBotService : BackgroundService
 
     private IReplyMarkup GetMenuKeyboard()
     {
-        // Remove Play button from keyboard - using inline button instead for better Web App auth
-        var buttons = new List<KeyboardButton[]>
-        {
-            new[] { new KeyboardButton(BTN_DEPOSIT), new KeyboardButton(BTN_WITHDRAW) }
-        };
+        var webAppUrl = _config["TelegramBot:WebAppUrl"]?.Trim();
+        var buttons = new List<KeyboardButton[]>();
+
+        // Add Play button back - frontend now handles missing initData gracefully
+        if (!string.IsNullOrEmpty(webAppUrl) && Uri.IsWellFormedUriString(webAppUrl, UriKind.Absolute))
+            buttons.Add(new[] { KeyboardButton.WithWebApp(BTN_PLAY, new WebAppInfo { Url = webAppUrl }) });
+
+        buttons.Add(new[] { new KeyboardButton(BTN_DEPOSIT), new KeyboardButton(BTN_WITHDRAW) });
 
         return new ReplyKeyboardMarkup(buttons) { ResizeKeyboard = true, IsPersistent = true };
     }

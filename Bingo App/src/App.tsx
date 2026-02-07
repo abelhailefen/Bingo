@@ -55,9 +55,14 @@ const App = () => {
             } else {
                 addLog('[Auth] No Telegram initData, using fallback');
             }
-            // Local development fallback
-            const fallbackId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || 12345;
-            addLog('[Auth] Using fallback ID: ' + fallbackId);
+            
+            // Fallback: If we have user data from initDataUnsafe (keyboard button), use that
+            const fallbackId = telegram?.initDataUnsafe?.user?.id || 12345;
+            if (fallbackId !== 12345) {
+                addLog('[Auth] Using authenticated Telegram user from unsafe: ' + fallbackId);
+            } else {
+                addLog('[Auth] Using dev fallback ID: 12345');
+            }
             setUserId(fallbackId);
             setView('wager');
         };
