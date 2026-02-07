@@ -6,6 +6,7 @@ using Bingo.Core.Features.Gameplay.Contract.Service;
 using Bingo.Core.Features.Gameplay.DTOs;
 using Bingo.Core.Models;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -17,19 +18,23 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
 {
     private readonly IBingoRepository _repository;
     private readonly IRoomManagerSignal _signal;
+    private readonly ILogger<JoinLobbyCommandHandler> _logger;  
 
     private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
-    public JoinLobbyCommandHandler(IBingoRepository repository, IRoomManagerSignal signal)
+    public JoinLobbyCommandHandler(IBingoRepository repository, IRoomManagerSignal signal, ILogger<JoinLobbyCommandHandler> logger)
     {
         _repository = repository;
         _signal = signal;
+        _logger = logger;
 
     }
     public async Task<Response<JoinLobbyResponse>> Handle(JoinLobbyCommand request, CancellationToken cancellationToken)
     {
         await _semaphore.WaitAsync(cancellationToken);
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
         try
         {
+
             // 1. Find the ONLY active waiting room for this price
             var room = await _repository.FindOneAsync<Room>(r =>
                 r.CardPrice == request.CardPrice &&
