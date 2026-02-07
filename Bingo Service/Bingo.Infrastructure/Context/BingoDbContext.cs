@@ -17,6 +17,7 @@ public class BingoDbContext : DbContext
     public DbSet<Win> Wins => Set<Win>();
     public DbSet<MasterCard> MasterCards => Set<MasterCard>();
     public DbSet<MasterCardNumber> MasterCardNumbers => Set<MasterCardNumber>();
+    public DbSet<WithdrawalRequest> WithdrawalRequests => Set<WithdrawalRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -391,6 +392,50 @@ public class BingoDbContext : DbContext
 
             entity.HasOne(e => e.User)
                 .WithMany() // Or add a collection to User entity if preferred
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        /* ============================================================
+         * Withdrawal Requests
+         * ============================================================ */
+        modelBuilder.Entity<WithdrawalRequest>(entity =>
+        {
+            entity.ToTable("withdrawal_requests");
+
+            entity.HasKey(e => e.WithdrawalRequestId);
+
+            entity.Property(e => e.WithdrawalRequestId)
+                .HasColumnName("withdrawal_request_id")
+                .UseIdentityAlwaysColumn();
+
+            entity.Property(e => e.UserId)
+                .HasColumnName("user_id")
+                .IsRequired();
+
+            entity.Property(e => e.Amount)
+                .HasColumnName("amount")
+                .HasPrecision(10, 2)
+                .IsRequired();
+
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasConversion<int>()
+                .HasDefaultValue(WithdrawalStatusEnum.Pending);
+
+            entity.Property(e => e.AdminComment)
+                .HasColumnName("admin_comment")
+                .HasMaxLength(500);
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            entity.Property(e => e.ProcessedAt)
+                .HasColumnName("processed_at");
+
+            entity.HasOne(e => e.User)
+                .WithMany()
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

@@ -62,6 +62,8 @@ namespace Bingo.Core.Features.Gameplay.Handler
             if (winningCard == null)
                 return Response<bool>.Error("Wait! Your card doesn't have a Bingo yet. Keep playing!");
 
+            var playerCount = await _repository.CountAsync<RoomPlayer>(rp => rp.RoomId == request.RoomId);
+
             // 1. Record the Win
             var win = new Win
             {
@@ -69,16 +71,20 @@ namespace Bingo.Core.Features.Gameplay.Handler
                 UserId = request.UserId,
                 CardId = winningCard.CardId,
                 WinType = WinTypeEnum.Line,
-                Prize = room.CardPrice * room.MaxPlayers * 0.8m,
+                Prize = room.CardPrice * playerCount * 0.87m,
                 Verified = true
             };
+            var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
+            if (user == null)
+                return Response<bool>.Error("User not found");
 
+            user.Balance += win.Prize;
+            await _repository.UpdateAsync<User>(user);
             await _repository.AddAsync(win);
             room.Status = RoomStatusEnum.Completed;
             await _repository.UpdateAsync(room);
             await _repository.SaveChanges();
 
-            var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
             await _hubContext.Clients.Group(request.RoomId.ToString())
                 .WinClaimed(request.RoomId, user.Username, "LINE BINGO", win.Prize);
 

@@ -9,6 +9,8 @@ services:
       - POSTGRES_DB=bingo
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=bingo@password
+    ports:
+      - "127.0.0.1:5432:5432" 
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -26,7 +28,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8081:8080" # Dashboard
+      - "8081:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik.yml:/etc/traefik/traefik.yml
@@ -34,6 +36,7 @@ services:
     environment:
       - CLOUDFLARE_API_TOKEN=JLQVAqWy0ooFNRi9yMnLaUlqJPlE4B0oRriIHcXz
       - CLOUDFLARE_EMAIL=capthailefen@gmail.com
+      - TRAEFIK_PROVIDERS_DOCKER_ENDPOINT=unix:///var/run/docker.sock
     networks:
       - bingo-network
 
@@ -49,6 +52,7 @@ services:
       - ConnectionStrings__DefaultConnection=Host=bingo-db;Port=5432;Database=bingo;Username=postgres;Password=bingo@password 
       - TelegramBot__Token=8510424881:AAHfGWJID1fMeUtZ-6RpPkd37WNF5F7LKsM
       - TelegramBot__WebAppUrl=https://melabingo.xyz
+      - TelegramBot__AdminGroupId=-5171365510  
     depends_on:
       bingo-db:
         condition: service_healthy
