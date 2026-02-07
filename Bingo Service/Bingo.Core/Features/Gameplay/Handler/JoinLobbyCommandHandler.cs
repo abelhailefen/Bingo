@@ -32,6 +32,41 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
     {
         await _semaphore.WaitAsync(cancellationToken);
         _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+        _logger.LogInformation("User {UserId} is attempting to join a lobby for card price {CardPrice}", request.UserId, request.CardPrice);
+
+
+
+
+
         try
         {
 
