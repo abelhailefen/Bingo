@@ -10,6 +10,12 @@ const App = () => {
     const [, setAuthToken] = useState<string | null>(null);
     const [wager, setWager] = useState<number | null>(null);
     const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
+    const [debugLogs, setDebugLogs] = useState<string[]>([]);
+
+    const addLog = (msg: string) => {
+        setDebugLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`]);
+        console.log(msg);
+    };
 
     useEffect(() => {
         const initTelegramAuth = async () => {
@@ -18,12 +24,12 @@ const App = () => {
             if (telegram?.initData) {
                 telegram.ready();
                 telegram.expand();
-                console.log('[Auth] Telegram initData found, attempting auth...');
+                addLog('[Auth] Telegram initData found, attempting auth...');
                 try {
                     const response = await telegramInit(telegram.initData);
-                    console.log('[Auth] Response:', response);
+                    addLog('[Auth] Response: ' + JSON.stringify(response));
                     if (response.success && response.data) {
-                        console.log('[Auth] Success! User ID:', response.data.userId);
+                        addLog('[Auth] Success! User ID: ' + response.data.userId);
                         setAuthToken(response.data.token);
                         localStorage.setItem('bingo_token', response.data.token);
                         
@@ -32,16 +38,17 @@ const App = () => {
                         setView('wager');
                         return;
                     } else {
-                        console.error('[Auth] Auth failed or no data:', response);
+                        addLog('[Auth] Auth failed or no data: ' + JSON.stringify(response));
                     }
                 } catch (error) {
-                    console.error('[Auth] API Error:', error);
+                    addLog('[Auth] API Error: ' + error);
                 }
             } else {
-                console.log('[Auth] No Telegram initData, using fallback');
+                addLog('[Auth] No Telegram initData, using fallback');
             }
             // Local development fallback
             const fallbackId = (window as any).Telegram?.WebApp?.initDataUnsafe?.user?.id || 12345;
+            addLog('[Auth] Using fallback ID: ' + fallbackId);
             setUserId(fallbackId);
             setView('wager');
         };
@@ -92,6 +99,19 @@ const App = () => {
                     userId={userId}
                     onLeave={handleBackToWager} // Redirects to Wager Selection
                 />
+            )}
+
+            {/* DEBUG OVERLAY - Remove after debugging */}
+            {debugLogs.length > 0 && (
+                <div className="fixed bottom-0 left-0 right-0 bg-black/90 text-white p-2 max-h-48 overflow-y-auto text-xs font-mono z-50">
+                    <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-yellow-400">DEBUG LOGS (User ID: {userId})</span>
+                        <button onClick={() => setDebugLogs([])} className="text-red-400">Clear</button>
+                    </div>
+                    {debugLogs.map((log, i) => (
+                        <div key={i} className="border-b border-white/10 py-1">{log}</div>
+                    ))}
+                </div>
             )}
         </div>
     );
