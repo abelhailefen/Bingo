@@ -4,6 +4,7 @@ using Bingo.Core.Auth.Contract.Query;
 using Bingo.Core.Models;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using Bingo.Core.Auth.Contract.Response;
 
 namespace Bingo.API.Controllers;
 
@@ -18,7 +19,6 @@ public class AuthController : ControllerBase
         _mediator = mediator;
     }
 
-using Bingo.Core.Auth.Contract.Response;
 
     [HttpPost("telegram-init")]
     public async Task<ActionResult<Response<TelegramInitResponse>>> TelegramInit([FromBody] TelegramInitRequest request)
