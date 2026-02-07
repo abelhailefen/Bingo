@@ -24,6 +24,7 @@ public class TelegramBotService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ITelegramBotClient _botClient;
     private readonly string _adminGroupId;
+    private readonly string _webAppUrl;
 
     private static readonly ConcurrentDictionary<long, PaymentProviderEnum> _pendingDeposits = new();
     private static readonly ConcurrentDictionary<long, bool> _pendingWithdrawals = new();
@@ -38,6 +39,8 @@ public class TelegramBotService : BackgroundService
         _scopeFactory = scopeFactory;
         _botClient = botClient;
         _adminGroupId = _config["TelegramBot:AdminGroupId"] ?? "";
+        _webAppUrl = _config["TelegramBot:WebAppUrl"]?.Trim() ?? "";
+
     }
 
     private IReplyMarkup GetMenuKeyboard()
@@ -47,7 +50,7 @@ public class TelegramBotService : BackgroundService
 
         // Add Play button back - frontend now handles missing initData gracefully
         if (!string.IsNullOrEmpty(webAppUrl) && Uri.IsWellFormedUriString(webAppUrl, UriKind.Absolute))
-            buttons.Add(new[] { KeyboardButton.WithWebApp(BTN_PLAY, new WebAppInfo { Url = webAppUrl }) });
+            buttons.Add(new[] { KeyboardButton.WithWebApp(BTN_PLAY, new WebAppInfo { Url = _webAppUrl }) });
 
         buttons.Add(new[] { new KeyboardButton(BTN_DEPOSIT), new KeyboardButton(BTN_WITHDRAW) });
 
