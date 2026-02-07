@@ -36,7 +36,8 @@ const App = () => {
                 try {
                     const response = await telegramInit(telegram.initData);
                     addLog('[Auth] Response: ' + JSON.stringify(response));
-                    if (response.success && response.data) {
+                    // Check responseStatus === 0 (Success) and !isFailed
+                    if (!response.isFailed && response.data) {
                         addLog('[Auth] Success! User ID: ' + response.data.userId);
                         setAuthToken(response.data.token);
                         localStorage.setItem('bingo_token', response.data.token);
@@ -46,7 +47,7 @@ const App = () => {
                         setView('wager');
                         return;
                     } else {
-                        addLog('[Auth] Auth failed or no data: ' + JSON.stringify(response));
+                        addLog('[Auth] Auth failed: ' + response.message);
                     }
                 } catch (error) {
                     addLog('[Auth] API Error: ' + error);
