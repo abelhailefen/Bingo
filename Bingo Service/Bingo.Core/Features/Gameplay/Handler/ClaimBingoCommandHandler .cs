@@ -19,12 +19,12 @@ namespace Bingo.Core.Features.Gameplay.Handler
     public class ClaimBingoCommandHandler : IRequestHandler<ClaimBingoCommand, Response<bool>>
     {
         private readonly IBingoRepository _repository;
-        private readonly IHubContext<BingoHub, IBingoHubClient> _hubContext;
+        private readonly IMediator _mediator;
 
-        public ClaimBingoCommandHandler(IBingoRepository repository, IHubContext<BingoHub, IBingoHubClient> hubContext)
+        public ClaimBingoCommandHandler(IBingoRepository repository, IMediator mediator)
         {
             _repository = repository;
-            _hubContext = hubContext;
+            _mediator = mediator;
         }
 
         public async Task<Response<bool>> Handle(ClaimBingoCommand request, CancellationToken cancellationToken)
@@ -36,13 +36,14 @@ namespace Bingo.Core.Features.Gameplay.Handler
             var calledNumbers = (await _repository.FindAsync<CalledNumber>(cn => cn.RoomId == request.RoomId))
                                 .Select(cn => cn.Number).ToList();
 
-            // FIX 1: Corrected Argument Order (UserId, RoomId)
             var userCards = await _repository.GetUserCardsInRoomAsync(request.UserId, request.RoomId);
 
             if (userCards == null || !userCards.Any())
                 return Response<bool>.Error("No cards found for this user in this room.");
 
             Card winningCard = null;
+            WinPatternEnum detectedPattern = room.Pattern; 
+
             foreach (var card in userCards)
             {
                 // Ensure we have exactly 25 numbers ordered correctly
@@ -52,7 +53,13 @@ namespace Bingo.Core.Features.Gameplay.Handler
                     .Select(n => n.Number ?? 0)
                     .ToList();
 
-                if (WinVerificationService.IsValidWin(flatNumbers, calledNumbers))
+                // Note: WinVerificationService.IsValidWin likely checks for 'Line' or generic Bingo. 
+                // We should ideally check against the Room's specific Pattern (e.g. FullHouse).
+                // Assuming IsValidWin checks basic Line/Bingo logic for now. 
+                // TODO: Update WinVerificationService to support patterns or use Repository.VerifyWinAsync here too?
+                // For consistency with Bot logic, let's use Repository VerifyWinAsync!
+                
+                if (await _repository.VerifyWinAsync(card.CardId, room.Pattern))
                 {
                     winningCard = card;
                     break;
@@ -62,31 +69,18 @@ namespace Bingo.Core.Features.Gameplay.Handler
             if (winningCard == null)
                 return Response<bool>.Error("Wait! Your card doesn't have a Bingo yet. Keep playing!");
 
-            var playerCount = await _repository.CountAsync<RoomPlayer>(rp => rp.RoomId == request.RoomId);
+            // Delegate to ClaimWinCommand
+            var claimResult = await _mediator.Send(new ClaimWinCommand(
+                request.RoomId, 
+                request.UserId, 
+                winningCard.CardId, 
+                (WinTypeEnum)room.Pattern 
+            ), cancellationToken);
 
-            // 1. Record the Win
-            var win = new Win
+            if (claimResult.ResponseStatus != ResponseStatus.Success )
             {
-                RoomId = (int)request.RoomId,
-                UserId = request.UserId,
-                CardId = winningCard.CardId,
-                WinType = WinTypeEnum.Line,
-                Prize = room.CardPrice * playerCount * 0.87m,
-                Verified = true
-            };
-            var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
-            if (user == null)
-                return Response<bool>.Error("User not found");
-
-            user.Balance += win.Prize;
-            await _repository.UpdateAsync<User>(user);
-            await _repository.AddAsync(win);
-            room.Status = RoomStatusEnum.Completed;
-            await _repository.UpdateAsync(room);
-            await _repository.SaveChanges();
-
-            await _hubContext.Clients.Group(request.RoomId.ToString())
-                .WinClaimed(request.RoomId, user.Username, "LINE BINGO", win.Prize);
+                return Response<bool>.Error(claimResult.Message);
+            }
 
             return Response<bool>.Success(true);
         }

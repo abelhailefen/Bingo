@@ -62,6 +62,9 @@ public class RoomManagerService : BackgroundService
             var room = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
             if (room == null || room.Status == RoomStatusEnum.Completed) return;
 
+             // Ensure bots are added if needed
+            await AddBotsToRoom(roomId, repo);
+
             DateTime scheduledTime = room.ScheduledStartTime ?? DateTime.UtcNow;
             TimeSpan delay = scheduledTime - DateTime.UtcNow;
 
@@ -101,6 +104,9 @@ public class RoomManagerService : BackgroundService
 
                     await mediator.Send(new CallNumberCommand(roomId), ct);
 
+                    // Check if any bots won
+                    await CheckBotWins(roomId, repo, mediator);
+
                     // Interval between numbers (e.g., 5 seconds)
                     await Task.Delay(5000, ct);
                 }
@@ -113,6 +119,106 @@ public class RoomManagerService : BackgroundService
         catch (Exception ex)
         {
           Console.WriteLine($"Error processing room {roomId}: {ex.Message}");
+        }
+    }
+
+    private async Task AddBotsToRoom(long roomId, IBingoRepository repo)
+    {
+        var room = await repo.GetActiveRoomWithPlayersAsync(roomId);
+        if (room == null) return;
+
+        int currentPlayerCount = room.Players.Count;
+        if (currentPlayerCount >= 5) return; // Enough real players
+
+        int botsNeeded = 5 - currentPlayerCount;
+        var existingBots = await repo.FindAsync<User>(u => u.Username.StartsWith("Bot-"));
+        
+        // Create matching bot users if they don't exist
+        for (int i = 1; i <= botsNeeded; i++)
+        {
+            string botName = $"Bot-{Guid.NewGuid().ToString().Substring(0, 5)}";
+            var botUser = existingBots.FirstOrDefault(b => b.Username == botName); // Unlikely to match GUID but good practice
+            
+            if (botUser == null)
+            {
+                botUser = new User
+                {
+                    UserId = Math.Abs(Guid.NewGuid().GetHashCode()), // Simple ID generation
+                    Username = botName,
+                    PhoneNumber = $"000-{Math.Abs(Guid.NewGuid().GetHashCode())}", // Dummy phone
+                    PasswordHash = "bot-hash",
+                    Balance = 10000
+                };
+                try 
+                {
+                    // Check if ID exists (collision check)
+                    if (await repo.FindOneAsync<User>(u => u.UserId == botUser.UserId) != null)
+                        botUser.UserId = Math.Abs(Guid.NewGuid().GetHashCode());
+
+                     await repo.AddAsync(botUser);
+                     await repo.SaveChanges();
+                }
+                catch 
+                { 
+                     // Ignore dupes and continue 
+                }
+            }
+
+            // Join Room
+             var roomPlayer = new RoomPlayer
+            {
+                RoomId = roomId,
+                UserId = botUser.UserId,
+                IsReady = true
+            };
+            
+            if (!await repo.AnyAsync<RoomPlayer>(rp => rp.RoomId == roomId && rp.UserId == botUser.UserId))
+            {
+                await repo.AddAsync(roomPlayer);
+                await repo.SaveChanges();
+            }
+
+            // Buy a Card
+            // Pick a random MasterCard that isn't taken
+            var takenMasterCardIds = await repo.GetTakenCardIdsAsync(roomId);
+            var random = new Random();
+            int masterCardId;
+            do
+            {
+                masterCardId = random.Next(1, 101); // Assuming 100 master cards
+            } while (takenMasterCardIds.Contains(masterCardId));
+
+            await repo.PickMasterCardAsync(botUser.UserId, roomId, masterCardId);
+        }
+    }
+
+    private async Task CheckBotWins(long roomId, IBingoRepository repo, IMediator mediator)
+    {
+        var room = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
+        if (room == null || room.Status != RoomStatusEnum.InProgress) return;
+
+        // Get Bot cards
+        // Since we can't easily filter by "User.Username.StartsWith" in Join if not mapped, 
+        // we'll get all cards and check in memory or better, get bot users first.
+        // Optimization: Get users with "Bot-" then get their cards in this room.
+        
+        var botUsers = await repo.FindAsync<User>(u => u.Username.StartsWith("Bot-"));
+        var botUserIds = botUsers.Select(u => u.UserId).ToList();
+
+        if (!botUserIds.Any()) return;
+
+        var cards = await repo.FindAsync<Card>(c => c.RoomId == roomId && botUserIds.Contains(c.UserId));
+
+        foreach (var card in cards)
+        {
+            // Verify Win for the room's current pattern
+            bool isWin = await repo.VerifyWinAsync(card.CardId, room.Pattern);
+            if (isWin)
+            {
+                // Claim Win
+                await mediator.Send(new ClaimWinCommand(roomId, card.UserId, card.CardId, (WinTypeEnum)room.Pattern));
+                // We don't break here, allowing multiple bots to potentially win on the same number (though ClaimWin might end the game)
+            }
         }
     }
 }

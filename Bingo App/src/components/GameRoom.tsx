@@ -268,10 +268,12 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             )}
 
             {/* TOP BAR */}
-            <div className="bg-[#1e293b] p-2 grid grid-cols-4 text-center text-[10px] font-bold border-b border-white/10 shrink-0 uppercase tracking-tighter">
+            <div className="bg-[#1e293b] p-2 grid grid-cols-6 text-center text-[10px] font-bold border-b border-white/10 shrink-0 uppercase tracking-tighter">
                 <div className="flex flex-col"><span>Room</span><span className="text-indigo-400">#{roomId}</span></div>
                 <div className="flex flex-col border-l border-white/10"><span>Status</span><span className="text-indigo-400">{roomData?.status === RoomStatus.InProgress ? 'LIVE' : 'WAITING'}</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>Stake</span><span className="text-indigo-400">{roomData?.cardPrice} ETB</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>Players</span><span className="text-indigo-400">{roomData?.players?.length || 0}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>Price</span><span className="text-indigo-400">{roomData?.cardPrice} ETB</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>Pool</span><span className="text-green-400">{((roomData?.cardPrice || 0) * (roomData?.players?.length || 0) * 0.87).toFixed(2)} ETB</span></div>
                 <div className="flex flex-col border-l border-white/10"><span>Calls</span><span className="text-indigo-400">{drawnNumbers.length}</span></div>
             </div>
 
