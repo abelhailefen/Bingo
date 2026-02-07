@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef, useCallback } from 'react';
+﻿import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useDispatch } from 'react-redux';
 import * as signalR from '@microsoft/signalr';
 import Confetti from 'react-confetti';
@@ -37,6 +37,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         } catch { return {}; }
     });
 
+    // --- HELPERS ---
     const getCallLetter = (n: number) => {
         if (n <= 15) return 'B';
         if (n <= 30) return 'I';
@@ -55,6 +56,54 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         const secs = s % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
+
+    const canClaimBingo = useMemo(() => {
+        return (roomData?.status === RoomStatus.InProgress || isCountingUp) && !winner && !gameOverMessage;
+    }, [roomData, isCountingUp, winner, gameOverMessage]);
+
+    // --- BINGO CHECKER LOGIC ---
+    const checkBingo = useCallback((card: any, drawn: number[]) => {
+        const cardNums = card.numbers || card.Numbers || [];
+        
+        const isCellFilled = (r: number, c: number) => {
+            const cell = cardNums.find((n: any) => 
+                (n.positionRow ?? n.PositionRow) === r && 
+                (n.positionCol ?? n.PositionCol) === c
+            );
+            const val = cell?.number ?? cell?.Number ?? null;
+            // Center (null) is always filled. Otherwise, check if number was drawn.
+            return val === null || drawn.includes(val);
+        };
+
+        // Check Rows
+        for (let r = 1; r <= 5; r++) {
+            if ([1, 2, 3, 4, 5].every(c => isCellFilled(r, c))) return true;
+        }
+        // Check Columns
+        for (let c = 1; c <= 5; c++) {
+            if ([1, 2, 3, 4, 5].every(r => isCellFilled(r, c))) return true;
+        }
+        // Diagonals
+        if ([1, 2, 3, 4, 5].every(i => isCellFilled(i, i))) return true;
+        if ([1, 2, 3, 4, 5].every(i => isCellFilled(i, 6 - i))) return true;
+
+        return false;
+    }, []);
+
+    // --- ACTIONS ---
+    const handleClaimBingo = useCallback(async () => {
+        if (!canClaimBingo) return;
+        try {
+            const res = await claimBingo(roomId, userId);
+            if (res.isFailed) {
+                // If manual, we alert. If auto, we log to avoid interrupting the flow.
+                if (!isAutoMode) alert(res.message);
+                else console.log("Auto-claim rejected:", res.message);
+            }
+        } catch (e) {
+            console.error("Bingo claim error", e);
+        }
+    }, [roomId, userId, canClaimBingo, isAutoMode]);
 
     const initGame = useCallback(async (isRefreshCall = false) => {
         if (isRefreshCall) setIsRefreshing(true);
@@ -122,6 +171,8 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         }
     }, [roomId, userId, updateCurrentNumber]);
 
+    // --- EFFECTS ---
+
     useEffect(() => {
         initGame();
         return () => {
@@ -130,6 +181,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         };
     }, [initGame, dispatch]);
 
+    // Timer Logic
     useEffect(() => {
         const interval = setInterval(() => {
             if (!roomData?.scheduledStartTime) return;
@@ -144,11 +196,13 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         return () => clearInterval(interval);
     }, [roomData, winner, gameOverMessage]);
 
+    // Persistence
     useEffect(() => {
         localStorage.setItem(`marks_${roomId}_${userId}`, JSON.stringify(userMarks));
         localStorage.setItem(`autoMode_${userId}`, String(isAutoMode));
     }, [userMarks, isAutoMode, roomId, userId]);
 
+    // Auto-Marking Logic
     useEffect(() => {
         if (isAutoMode && cards) {
             const newMarks: Record<number, number[]> = {};
@@ -160,6 +214,18 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         }
     }, [isAutoMode, drawnNumbers, cards]);
 
+    // --- AUTO-CLAIM TRIGGER ---
+    useEffect(() => {
+        if (isAutoMode && cards && drawnNumbers.length > 0 && canClaimBingo) {
+            const hasAnyBingo = cards.some((card) => checkBingo(card, drawnNumbers));
+            
+            if (hasAnyBingo) {
+                console.log("Bingo detected automatically! Claiming...");
+                handleClaimBingo();
+            }
+        }
+    }, [drawnNumbers, isAutoMode, cards, canClaimBingo, checkBingo, handleClaimBingo]);
+
     const toggleMark = (num: number | null, cardIdx: number) => {
         if (num === null || winner || gameOverMessage || isAutoMode) return;
         setUserMarks(prev => {
@@ -169,17 +235,6 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         });
     };
 
-    const handleClaimBingo = async () => {
-        try {
-            const res = await claimBingo(roomId, userId);
-            if (res.isFailed) alert(res.message);
-        } catch (e) {
-            alert("Server error.");
-        }
-    };
-
-    const canClaimBingo = (roomData?.status === RoomStatus.InProgress || isCountingUp) && !winner && !gameOverMessage;
-
     return (
         <div className="flex flex-col h-screen bg-[#0f172a] text-white overflow-hidden relative">
             {winner && <Confetti recycle={false} numberOfPieces={400} />}
@@ -187,7 +242,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             {/* WINNER MODAL */}
             {winner && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-                    <div className="bg-indigo-950 border-2 border-orange-500 rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">
+                    <div className="bg-indigo-950 border-2 border-orange-500 rounded-3xl p-8 w-full max-sm text-center shadow-2xl">
                         <div className="text-6xl mb-4">🏆</div>
                         <h2 className="text-4xl font-black mb-2 italic text-white">BINGO!</h2>
                         <p className="text-orange-400 font-bold text-xl mb-6">{winner.username.toUpperCase()} WON</p>
@@ -200,10 +255,10 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 </div>
             )}
 
-            {/* GAME OVER MODAL (No Winner) */}
+            {/* GAME OVER MODAL */}
             {gameOverMessage && !winner && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-                    <div className="bg-slate-900 border-2 border-red-500 rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">
+                    <div className="bg-slate-900 border-2 border-red-500 rounded-3xl p-8 w-full max-sm text-center shadow-2xl">
                         <div className="text-6xl mb-4">⌛</div>
                         <h2 className="text-4xl font-black mb-2 italic text-white">GAME OVER</h2>
                         <p className="text-red-400 font-bold text-lg mb-6 uppercase tracking-wider">{gameOverMessage}</p>
@@ -228,13 +283,9 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 grid grid-cols-5 gap-1.5 content-start">
                         {Array.from({ length: 75 }).map((_, i) => {
-                            // Calculate row and column based on grid index 'i' (0-74)
-                            const row = Math.floor(i / 5); // 0 to 14
-                            const col = i % 5;             // 0 to 4
-
-        
+                            const row = Math.floor(i / 5); 
+                            const col = i % 5;             
                             const num = (col * 15) + (row + 1);
-
                             const isDrawn = drawnNumbers.includes(num);
                             const isLast = currentNumber?.val === num;
 
@@ -242,10 +293,10 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                                 <div
                                     key={num}
                                     className={`aspect-square flex items-center justify-center rounded-md text-[10px] md:text-xs font-bold border transition-all 
-                        ${isDrawn
-                                            ? (isLast ? 'bg-orange-500 border-white animate-pulse scale-110 z-10' : 'bg-green-600 border-green-400 text-white')
-                                            : 'bg-white/5 border-transparent text-slate-700'
-                                        }`}
+                                    ${isDrawn
+                                        ? (isLast ? 'bg-orange-500 border-white animate-pulse scale-110 z-10' : 'bg-green-600 border-green-400 text-white')
+                                        : 'bg-white/5 border-transparent text-slate-700'
+                                    }`}
                                 >
                                     {num}
                                 </div>
