@@ -84,16 +84,27 @@ public class ClaimWinCommandHandler : IRequestHandler<ClaimWinCommand, Response<
              var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
              string winnerName = user?.Username ?? "Unknown";
              
+             // Get the winning card with its numbers for display
+             var winningCard = await _repository.FindOneAsync<Card>(c => c.CardId == request.CardId, 
+                 includeProps: new[] { "MasterCard", "MasterCard.Numbers" });
+             
+             // Prepare card data for frontend
+             var cardNumbers = winningCard?.MasterCard?.Numbers?
+                 .OrderBy(n => n.PositionRow)
+                 .ThenBy(n => n.PositionCol)
+                 .Select(n => new
+                 {
+                     positionRow = n.PositionRow,
+                     positionCol = n.PositionCol,
+                     number = n.Number
+                 })
+                 .ToList();
+             
              await _hubContext.Clients.Group(request.RoomId.ToString())
                 .SendAsync("GameEnded", request.RoomId, $"Winner: {winnerName} Prize: {prize}");
-                // Note: The frontend might expect specific arguments for GameEnded or WinClaimed. 
-                // ClaimBingo used: .WinClaimed(request.RoomId, user.Username, "LINE BINGO", win.Prize);
-                // RoomManagerService used: .GameEnded(request.RoomId, "Reason");
-                // I will send BOTH to be safe or check what frontend expects.
-                // RoomManagerService (existing) sends GameEnded with a string reason.
                 
              await _hubContext.Clients.Group(request.RoomId.ToString())
-                .SendAsync("WinClaimed", request.RoomId, winnerName, request.WinType.ToString(), prize);
+                .SendAsync("WinClaimed", request.RoomId, winnerName, request.WinType.ToString(), prize, cardNumbers);
         }
 
         return Response<Win>.Success(win);

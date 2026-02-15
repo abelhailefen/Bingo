@@ -23,7 +23,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
     const [drawnNumbers, setDrawnNumbers] = useState<number[]>([]);
     const [currentNumber, setCurrentNumber] = useState<{ letter: string, val: number } | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [winner, setWinner] = useState<{ username: string, prize: number, type: string } | null>(null);
+    const [winner, setWinner] = useState<{ username: string, prize: number, type: string, cardNumbers?: any[] } | null>(null);
     const [gameOverMessage, setGameOverMessage] = useState<string | null>(null);
     const [timerSeconds, setTimerSeconds] = useState<number>(0);
     const [isCountingUp, setIsCountingUp] = useState<boolean>(false);
@@ -149,9 +149,9 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 updateCurrentNumber(number);
             });
 
-            connection.on("WinClaimed", (rId, username, winType, prize) => {
+            connection.on("WinClaimed", (rId, username, winType, prize, cardNumbers) => {
                 if (Number(rId) !== roomId) return;
-                setWinner({ username, prize, type: winType });
+                setWinner({ username, prize, type: winType, cardNumbers });
                 setIsCountingUp(false);
             });
 
@@ -241,11 +241,46 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
 
             {/* WINNER MODAL */}
             {winner && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
-                    <div className="bg-indigo-950 border-2 border-orange-500 rounded-3xl p-8 w-full max-sm text-center shadow-2xl">
+                <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
+                    <div className="bg-indigo-950 border-2 border-orange-500 rounded-3xl p-8 w-full max-w-lg text-center shadow-2xl my-6">
                         <div className="text-6xl mb-4">🏆</div>
                         <h2 className="text-4xl font-black mb-2 italic text-white">BINGO!</h2>
                         <p className="text-orange-400 font-bold text-xl mb-6">{winner.username.toUpperCase()} WON</p>
+                        
+                        {/* Winning Card Display */}
+                        {winner.cardNumbers && winner.cardNumbers.length > 0 && (
+                            <div className="mb-6">
+                                <p className="text-slate-300 text-sm font-bold mb-3">Winning Card</p>
+                                <div className="w-full max-w-[280px] mx-auto bg-[#fefce8] p-3 rounded-xl shadow-2xl border-b-8 border-black/10">
+                                    <div className="grid grid-cols-5 text-center font-black text-base mb-2">
+                                        <span className="text-orange-600">B</span>
+                                        <span className="text-green-600">I</span>
+                                        <span className="text-blue-600">N</span>
+                                        <span className="text-red-600">G</span>
+                                        <span className="text-purple-600">O</span>
+                                    </div>
+                                    <div className="grid grid-cols-5 gap-1">
+                                        {Array(5).fill(0).map((_, r) => (
+                                            Array(5).fill(0).map((_, c) => {
+                                                const cell = winner.cardNumbers!.find((n: any) => 
+                                                    n.positionRow === r + 1 && n.positionCol === c + 1
+                                                );
+                                                const val = cell?.number ?? null;
+                                                return (
+                                                    <div 
+                                                        key={`${r}-${c}`} 
+                                                        className="aspect-square flex items-center justify-center rounded-md text-base font-black bg-green-500 text-white border border-black/10"
+                                                    >
+                                                        {val ?? '★'}
+                                                    </div>
+                                                );
+                                            })
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
                         <div className="bg-white/10 rounded-2xl p-4 mb-6">
                             <p className="text-slate-400 text-xs uppercase font-bold">Prize Pool</p>
                             <p className="text-3xl font-black text-green-400">{winner.prize} ETB</p>
