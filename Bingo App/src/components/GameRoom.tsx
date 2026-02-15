@@ -146,10 +146,18 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 .withAutomaticReconnect()
                 .build();
 
-            connection.on("GameStarted", (rId) => {
+            connection.on("GameStarted", async (rId) => {
                 if (Number(rId) === roomId) {
                     setIsCountingUp(true);
-                    setRoomData(prev => prev ? { ...prev, status: RoomStatus.InProgress } : null);
+                    // Refresh room data to get updated player count (including bots)
+                    try {
+                        const roomRes = await getRoom(roomId);
+                        if (roomRes.data) {
+                            setRoomData(roomRes.data);
+                        }
+                    } catch (err) {
+                        console.error("Failed to refresh room data on game start:", err);
+                    }
                 }
             });
 
