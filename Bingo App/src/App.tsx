@@ -78,14 +78,15 @@ const App = () => {
             }
         };
 
-        const checkForActiveGame = async (userId: number) => {
+        const checkForActiveGame = async (uid: number) => {
             try {
                 // Check if user has any cards in a non-completed room
-                const response = await fetch(`/api/game/active-room/${userId}`);
+                const response = await fetch(`/api/rooms/active-room/${uid}`);
                 if (response.ok) {
                     const data = await response.json();
                     if (data.data && data.data.roomId) {
                         // User has an active game!
+                        console.log("Found active game, rejoining:", data.data);
                         setActiveRoomId(data.data.roomId);
                         setWager(data.data.cardPrice);
                         setView('game');
@@ -99,14 +100,36 @@ const App = () => {
         };
 
         const init = async () => {
-            await initTelegramAuth();
+            const tg = (window as any).Telegram?.WebApp;
+
+            // 1. FAST PATH: Check Local Storage (Instant)
+            const savedId = localStorage.getItem('bingo_user_id');
+            const savedToken = localStorage.getItem('bingo_token');
             
-            // After auth, check if user already in a game
-            if (userId) {
-                const hasActiveGame = await checkForActiveGame(userId);
-                if (!hasActiveGame && view === 'auth') {
+            let currentUserId = null;
+            
+            if (savedId && savedToken) {
+                currentUserId = parseInt(savedId);
+                setUserId(currentUserId);
+                setAuthToken(savedToken);
+            }
+
+            // Try to get userId from various sources
+            if (!currentUserId && tg?.initDataUnsafe?.user?.id) {
+                currentUserId = tg.initDataUnsafe.user.id;
+                setUserId(currentUserId);
+            }
+
+            // Check for active game before showing wager selection
+            if (currentUserId) {
+                const hasActiveGame = await checkForActiveGame(currentUserId);
+                if (!hasActiveGame) {
                     setView('wager');
                 }
+                // If hasActiveGame is true, view is already set to 'game'
+            } else {
+                // No user ID yet, continue with full auth flow
+                await initTelegramAuth();
             }
         };
 
