@@ -2,8 +2,14 @@ using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities;
 using Bingo.Core.Entities.Enums;
 using Bingo.Core.Features.Gameplay.Contract.Command;
+using Bingo.Core.Hubs;
 using Bingo.Core.Models;
 using MediatR;
+using Microsoft.AspNetCore.SignalR;
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System;
 using System.Linq;
 using System.Threading;
@@ -14,11 +20,13 @@ namespace Bingo.Core.Features.Gameplay.Handler
     public class PurchaseCardsCommandHandler : IRequestHandler<PurchaseCardsCommand, Response<bool>>
     {
         private readonly IBingoRepository _repository;
+        private readonly IHubContext<BingoHub> _hubContext;
         private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
-        public PurchaseCardsCommandHandler(IBingoRepository repository)
+        public PurchaseCardsCommandHandler(IBingoRepository repository, IHubContext<BingoHub> hubContext)
         {
             _repository = repository;
+            _hubContext = hubContext;
         }
 
         public async Task<Response<bool>> Handle(PurchaseCardsCommand request, CancellationToken cancellationToken)
@@ -113,6 +121,14 @@ namespace Bingo.Core.Features.Gameplay.Handler
                 }
 
                 await _repository.SaveChanges();
+                
+                // Broadcast room stats update
+                var playerCount = await _repository.CountAsync<RoomPlayer>(rp => rp.RoomId == request.RoomId);
+                var cardCount = await _repository.CountAsync<Card>(c => c.RoomId == request.RoomId);
+                var prizePool = cardCount * room.CardPrice * 0.87m;
+                
+                await _hubContext.Clients.Group(request.RoomId.ToString())
+                    .SendAsync("RoomStatsUpdated", request.RoomId, playerCount, prizePool);
 
                 return Response<bool>.Success(true);
             }

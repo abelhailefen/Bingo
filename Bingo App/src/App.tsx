@@ -78,8 +78,40 @@ const App = () => {
             }
         };
 
-        initTelegramAuth();
-    }, [view, userId]);
+        const checkForActiveGame = async (userId: number) => {
+            try {
+                // Check if user has any cards in a non-completed room
+                const response = await fetch(`/api/game/active-room/${userId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.data && data.data.roomId) {
+                        // User has an active game!
+                        setActiveRoomId(data.data.roomId);
+                        setWager(data.data.cardPrice);
+                        setView('game');
+                        return true;
+                    }
+                }
+            } catch (err) {
+                console.log("No active game found", err);
+            }
+            return false;
+        };
+
+        const init = async () => {
+            await initTelegramAuth();
+            
+            // After auth, check if user already in a game
+            if (userId) {
+                const hasActiveGame = await checkForActiveGame(userId);
+                if (!hasActiveGame && view === 'auth') {
+                    setView('wager');
+                }
+            }
+        };
+
+        init();
+    }, []);
 
     const handleWagerSelected = (selectedWager: number) => {
         setWager(selectedWager);

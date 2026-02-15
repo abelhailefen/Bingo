@@ -91,6 +91,14 @@ public class RoomsController : ControllerBase
         query.RoomId = roomId;
         return await _mediator.Send(query);
     }
+    
+    [HttpGet("active-room/{userId}")]
+    public async Task<ActionResult<Response<ActiveRoomResponse>>> GetActiveRoom(long userId)
+    {
+        var result = await _mediator.Send(new GetActiveRoomQuery(userId));
+        if (result.IsFailed) return NotFound(result);
+        return Ok(result);
+    }
     [HttpGet("{roomId}/state")]
     public async Task<ActionResult<Response<RoomStateDto>>> GetRoomState(long roomId)
     {

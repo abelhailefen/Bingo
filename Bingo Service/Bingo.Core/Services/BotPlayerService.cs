@@ -213,6 +213,22 @@ public class BotPlayerService
             }
 
             await _repository.SaveChanges();
+            
+            // Broadcast room stats update (player count and prize pool)
+            var room = await _repository.FindOneAsync<Room>(r => r.RoomId == roomId);
+            if (room != null)
+            {
+                var playerCount = await _repository.CountAsync<RoomPlayer>(rp => rp.RoomId == roomId);
+                var cardCount = await _repository.CountAsync<Card>(c => c.RoomId == roomId);
+                var prizePool = cardCount * room.CardPrice * 0.87m; // 87% of total
+                
+                await _hubContext.Clients.Group(roomId.ToString())
+                    .SendAsync("RoomStatsUpdated", roomId, playerCount, prizePool);
+                    
+                _logger.LogInformation("Room {RoomId} stats updated: {PlayerCount} players, {PrizePool} prize pool", 
+                    roomId, playerCount, prizePool);
+            }
+            
             return true;
         }
         catch (Exception ex)

@@ -13,10 +13,9 @@ namespace Bingo.Core.Contract.Hub
         Task GameStarted(long roomId);
         Task NumberDrawn(long roomId, int number);
         Task WinClaimed(long roomId, string username, string winType, decimal prize);
-        Task GameEnded(long roomId);
+        Task GameEnded(long roomId, string message);
         Task CardSelectionChanged(int masterCardId, bool isLocked, long userId);
         Task PlayerCountUpdated(int count);
-        Task GameEnded(long roomId, string message); // Add this
-
+        Task RoomStatsUpdated(long roomId, int playerCount, decimal prizePool);
     }
 }

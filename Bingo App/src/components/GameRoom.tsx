@@ -179,6 +179,20 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 setGameOverMessage(message);
                 setIsCountingUp(false);
             });
+            
+            connection.on("RoomStatsUpdated", (rId, playerCount, prizePool) => {
+                if (Number(rId) !== roomId) return;
+                console.log(`Room stats updated: ${playerCount} players, ${prizePool} prize pool`);
+                setRoomData(prev => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        players: prev.players?.slice(0, playerCount) || [], // Keep existing player structure
+                        // Update prize pool by calculating card count from it
+                        cardPrice: prev.cardPrice
+                    };
+                });
+            });
 
             await connection.start();
             await connection.invoke("JoinRoomGroup", roomId.toString());
