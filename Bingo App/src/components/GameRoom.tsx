@@ -183,16 +183,17 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             connection.on("RoomStatsUpdated", (rId, playerCount, prizePool) => {
                 if (Number(rId) !== roomId) return;
                 console.log(`Room stats updated: ${playerCount} players, ${prizePool} prize pool`);
-                setRoomData(prev => {
-                    if (!prev) return prev;
-                    return {
-                        ...prev,
-                        players: prev.players?.slice(0, playerCount) || [], // Keep existing player structure
-                        // Update prize pool by calculating card count from it
-                        cardPrice: prev.cardPrice
-                    };
+                
+                // Force a refresh to get accurate room data with actual player list
+                getRoom(roomId).then(res => {
+                    if (res.data) {
+                        setRoomData(res.data);
+                    }
+                }).catch(err => {
+                    console.error("Failed to refresh room data:", err);
                 });
             });
+
 
             await connection.start();
             await connection.invoke("JoinRoomGroup", roomId.toString());

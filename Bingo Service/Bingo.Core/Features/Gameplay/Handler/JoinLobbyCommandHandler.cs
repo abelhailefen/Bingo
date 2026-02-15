@@ -59,9 +59,8 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                     CardPrice = request.CardPrice,
                     Pattern = WinPatternEnum.Line,
                     CreatedAt = DateTime.UtcNow,
-                    // Give 3 minutes for bots to join gradually
-                    // If a game is in progress, still use 3 min - game will start immediately when other finishes
-                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(180)
+                    // Default 30 seconds countdown (will be extended if blocked by another game)
+                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(30)
                 };
                 await _repository.AddAsync(room);
                 await _repository.SaveChanges();

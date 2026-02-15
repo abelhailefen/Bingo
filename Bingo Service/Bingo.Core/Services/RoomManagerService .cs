@@ -77,6 +77,18 @@ public class RoomManagerService : BackgroundService
                     if (priceIsBusy)
                     {
                         // Another game is still in progress for this price
+                        // Extend the countdown to 180 seconds to allow more bots to join
+                        if (room.ScheduledStartTime.HasValue)
+                        {
+                            var remainingTime = (room.ScheduledStartTime.Value - DateTime.UtcNow).TotalSeconds;
+                            if (remainingTime < 180)
+                            {
+                                room.ScheduledStartTime = DateTime.UtcNow.AddSeconds(180);
+                                await repo.UpdateAsync(room);
+                                await repo.SaveChanges();
+                            }
+                        }
+                        
                         // Just notify the lobby and wait - don't push the timer forward
                         // This prevents countdown from getting stuck at zero
                         await _hubContext.Clients.Group(room.RoomId.ToString())
