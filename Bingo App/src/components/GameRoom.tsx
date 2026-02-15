@@ -61,6 +61,17 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         return (roomData?.status === RoomStatus.InProgress || isCountingUp) && !winner && !gameOverMessage;
     }, [roomData, isCountingUp, winner, gameOverMessage]);
 
+    // Calculate total players including bots
+    const totalPlayers = useMemo(() => {
+        if (!roomData?.players) return 0;
+        return roomData.players.length;
+    }, [roomData]);
+
+    // Calculate prize pool
+    const prizePool = useMemo(() => {
+        return ((roomData?.cardPrice || 0) * totalPlayers * 0.87).toFixed(2);
+    }, [roomData, totalPlayers]);
+
     // --- BINGO CHECKER LOGIC ---
     const checkBingo = useCallback((card: any, drawn: number[]) => {
         const cardNums = card.numbers || card.Numbers || [];
@@ -248,38 +259,74 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                         <p className="text-orange-400 font-bold text-xl mb-6">{winner.username.toUpperCase()} WON</p>
                         
                         {/* Winning Card Display */}
-                        {winner.cardNumbers && winner.cardNumbers.length > 0 && (
-                            <div className="mb-6">
-                                <p className="text-slate-300 text-sm font-bold mb-3">Winning Card</p>
-                                <div className="w-full max-w-[280px] mx-auto bg-[#fefce8] p-3 rounded-xl shadow-2xl border-b-8 border-black/10">
-                                    <div className="grid grid-cols-5 text-center font-black text-base mb-2">
-                                        <span className="text-orange-600">B</span>
-                                        <span className="text-green-600">I</span>
-                                        <span className="text-blue-600">N</span>
-                                        <span className="text-red-600">G</span>
-                                        <span className="text-purple-600">O</span>
-                                    </div>
-                                    <div className="grid grid-cols-5 gap-1">
-                                        {Array(5).fill(0).map((_, r) => (
-                                            Array(5).fill(0).map((_, c) => {
-                                                const cell = winner.cardNumbers!.find((n: any) => 
-                                                    n.positionRow === r + 1 && n.positionCol === c + 1
-                                                );
-                                                const val = cell?.number ?? null;
-                                                return (
-                                                    <div 
-                                                        key={`${r}-${c}`} 
-                                                        className="aspect-square flex items-center justify-center rounded-md text-base font-black bg-green-500 text-white border border-black/10"
-                                                    >
-                                                        {val ?? '★'}
-                                                    </div>
-                                                );
-                                            })
-                                        ))}
+                        {winner.cardNumbers && winner.cardNumbers.length > 0 && (() => {
+                            // Determine which cells are part of the winning pattern
+                            const winningCells = new Set<string>();
+                            const cardNums = winner.cardNumbers;
+                            
+                            const isCellFilled = (r: number, c: number) => {
+                                const cell = cardNums.find((n: any) => n.positionRow === r && n.positionCol === c);
+                                const val = cell?.number ?? null;
+                                return val === null || drawnNumbers.includes(val);
+                            };
+                            
+                            // Check each row
+                            for (let r = 1; r <= 5; r++) {
+                                if ([1, 2, 3, 4, 5].every(c => isCellFilled(r, c))) {
+                                    [1, 2, 3, 4, 5].forEach(c => winningCells.add(`${r}-${c}`));
+                                }
+                            }
+                            // Check each column
+                            for (let c = 1; c <= 5; c++) {
+                                if ([1, 2, 3, 4, 5].every(r => isCellFilled(r, c))) {
+                                    [1, 2, 3, 4, 5].forEach(r => winningCells.add(`${r}-${c}`));
+                                }
+                            }
+                            // Check diagonals
+                            if ([1, 2, 3, 4, 5].every(i => isCellFilled(i, i))) {
+                                [1, 2, 3, 4, 5].forEach(i => winningCells.add(`${i}-${i}`));
+                            }
+                            if ([1, 2, 3, 4, 5].every(i => isCellFilled(i, 6 - i))) {
+                                [1, 2, 3, 4, 5].forEach(i => winningCells.add(`${i}-${6 - i}`));
+                            }
+                            
+                            return (
+                                <div className="mb-6">
+                                    <p className="text-slate-300 text-sm font-bold mb-3">Winning Card</p>
+                                    <div className="w-full max-w-[280px] mx-auto bg-[#fefce8] p-3 rounded-xl shadow-2xl border-b-8 border-black/10">
+                                        <div className="grid grid-cols-5 text-center font-black text-base mb-2">
+                                            <span className="text-orange-600">B</span>
+                                            <span className="text-green-600">I</span>
+                                            <span className="text-blue-600">N</span>
+                                            <span className="text-red-600">G</span>
+                                            <span className="text-purple-600">O</span>
+                                        </div>
+                                        <div className="grid grid-cols-5 gap-1">
+                                            {Array(5).fill(0).map((_, r) => (
+                                                Array(5).fill(0).map((_, c) => {
+                                                    const cell = cardNums.find((n: any) => 
+                                                        n.positionRow === r + 1 && n.positionCol === c + 1
+                                                    );
+                                                    const val = cell?.number ?? null;
+                                                    const isWinningCell = winningCells.has(`${r + 1}-${c + 1}`);
+                                                    
+                                                    return (
+                                                        <div 
+                                                            key={`${r}-${c}`} 
+                                                            className={`aspect-square flex items-center justify-center rounded-md text-base font-black border border-black/10 ${
+                                                                isWinningCell ? 'bg-green-500 text-white' : 'bg-white text-slate-800'
+                                                            }`}
+                                                        >
+                                                            {val ?? '★'}
+                                                        </div>
+                                                    );
+                                                })
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                         
                         <div className="bg-white/10 rounded-2xl p-4 mb-6">
                             <p className="text-slate-400 text-xs uppercase font-bold">Prize Pool</p>
@@ -306,9 +353,9 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             <div className="bg-[#1e293b] p-2 grid grid-cols-6 text-center text-[10px] font-bold border-b border-white/10 shrink-0 uppercase tracking-tighter">
                 <div className="flex flex-col"><span>Room</span><span className="text-indigo-400">#{roomId}</span></div>
                 <div className="flex flex-col border-l border-white/10"><span>Status</span><span className="text-indigo-400">{roomData?.status === RoomStatus.InProgress ? 'LIVE' : 'WAITING'}</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>Players</span><span className="text-indigo-400">{roomData?.players?.length || 0}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>Players</span><span className="text-indigo-400">{totalPlayers}</span></div>
                 <div className="flex flex-col border-l border-white/10"><span>Price</span><span className="text-indigo-400">{roomData?.cardPrice} ETB</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>Pool</span><span className="text-green-400">{((roomData?.cardPrice || 0) * (roomData?.players?.length || 0) * 0.87).toFixed(2)} ETB</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>Pool</span><span className="text-green-400">{prizePool} ETB</span></div>
                 <div className="flex flex-col border-l border-white/10"><span>Calls</span><span className="text-indigo-400">{drawnNumbers.length}</span></div>
             </div>
 
