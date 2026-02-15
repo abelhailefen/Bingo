@@ -76,18 +76,16 @@ public class RoomManagerService : BackgroundService
 
                     if (priceIsBusy)
                     {
-                        // Someone is still playing a game at this price point.
-                        // We push the start time forward by 10 seconds and notify the lobby.
-                        room.ScheduledStartTime = DateTime.UtcNow.AddSeconds(10);
-                        await repo.UpdateAsync(room);
-                        await repo.SaveChanges();
-
+                        // Another game is still in progress for this price
+                        // Just notify the lobby and wait - don't push the timer forward
+                        // This prevents countdown from getting stuck at zero
                         await _hubContext.Clients.Group(room.RoomId.ToString())
                             .SendAsync("WaitingForPreviousGame", room.RoomId);
 
-                        continue; // Skip starting this room for now
+                        continue; // Skip starting this room for now, keep checking
                     }
 
+                    // No active game for this price? Start immediately!
                     // Cancel any ongoing bot joining task for this room
                     if (_botJoiningTasks.TryRemove(room.RoomId, out var cts))
                     {

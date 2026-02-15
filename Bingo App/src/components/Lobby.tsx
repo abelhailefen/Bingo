@@ -93,7 +93,9 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             .build();
 
         connection.on("CardSelectionChanged", (cardId: number, isLocked: boolean, senderId: number) => {
-            if (senderId === userId) return;
+            // Don't filter bot updates - we want to see when bots select cards
+            // Only skip if it's literally our own action (to avoid double-updating our UI)
+            console.log(`CardSelection: card ${cardId}, locked: ${isLocked}, from user: ${senderId}`);
             dispatch(syncLockedCards({ cardId: Number(cardId), isLocked }));
         });
 
@@ -177,7 +179,8 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
             setCountdown(diff);
 
-            if (diff <= 0) {
+            if (diff <= 0 && !serverMessage) {
+                // Only reinit if we're not waiting for another game
                 clearInterval(interval);
                 setTimeout(() => {
                     if (!isTransitioningToGame.current) initLobby();
