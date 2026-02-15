@@ -60,6 +60,10 @@ public class BingoDbContext : DbContext
                 .HasPrecision(10, 2)
                 .HasDefaultValue(0);
 
+            entity.Property(e => e.IsBot)
+                .HasColumnName("is_bot")
+                .HasDefaultValue(false);
+
             entity.Property(e => e.CreatedAt)
                 .HasColumnName("created_at")
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");

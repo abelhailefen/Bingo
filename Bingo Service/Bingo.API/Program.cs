@@ -17,6 +17,9 @@ builder.Services.AddSingleton<ITelegramBotClient>(provider =>
 builder.Services.AddBingoInfrastructure(builder.Configuration);
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(JoinLobbyCommand).Assembly));
 
+// Register BotPlayerService for bot management
+builder.Services.AddScoped<BotPlayerService>();
+
 builder.Services.AddHostedService<TelegramBotService>();
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<RoomManagerService>();

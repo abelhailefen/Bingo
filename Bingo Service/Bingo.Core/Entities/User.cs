@@ -13,6 +13,7 @@ namespace Bingo.Core.Entities
         public string PhoneNumber { get; set; } = null!;
         public string PasswordHash { get; set; } = null!;
         public decimal Balance { get; set; }
+        public bool IsBot { get; set; } = false;
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 

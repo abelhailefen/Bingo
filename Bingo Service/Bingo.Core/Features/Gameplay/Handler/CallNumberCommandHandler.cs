@@ -5,6 +5,7 @@ using Bingo.Core.Entities.Enums;
 using Bingo.Core.Features.Gameplay.Contract.Command;
 using Bingo.Core.Hubs;
 using Bingo.Core.Models;
+using Bingo.Core.Services;
 using MediatR;
 using Microsoft.AspNetCore.SignalR;
 
@@ -14,12 +15,17 @@ public class CallNumberCommandHandler : IRequestHandler<CallNumberCommand, Respo
 {
     private readonly IBingoRepository _repository;
     private readonly IHubContext<BingoHub, IBingoHubClient> _hubContext;
+    private readonly BotPlayerService _botPlayerService;
     private static readonly Random _random = new();
 
-    public CallNumberCommandHandler(IBingoRepository repository, IHubContext<BingoHub, IBingoHubClient> hubContext)
+    public CallNumberCommandHandler(
+        IBingoRepository repository, 
+        IHubContext<BingoHub, IBingoHubClient> hubContext,
+        BotPlayerService botPlayerService)
     {
         _repository = repository;
         _hubContext = hubContext;
+        _botPlayerService = botPlayerService;
     }
 
     public async Task<Response<int>> Handle(CallNumberCommand request, CancellationToken cancellationToken)
@@ -68,6 +74,18 @@ public class CallNumberCommandHandler : IRequestHandler<CallNumberCommand, Respo
         // 6. Broadcast the number to the group
         await _hubContext.Clients.Group(request.RoomId.ToString())
             .NumberDrawn(request.RoomId, nextNumber);
+
+        // 6.5. Check if any bots have won with this number
+        try
+        {
+            calledValues.Add(nextNumber);
+            await _botPlayerService.CheckBotWinsAsync(request.RoomId, calledValues.ToList());
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail the whole operation if bot checking fails
+            // (You may want to add proper logging here)
+        }
 
         // 7. Broadcast Game Over if no more numbers are left
         if (isLastNumber)

@@ -59,7 +59,32 @@ public class RoomManagerService : BackgroundService
                         continue; // Skip starting this room for now
                     }
 
-                    // No active game for this price? Start it!
+                    // No active game for this price? Add bots and start it!
+                    
+                    // Get the BotPlayerService from DI
+                    var botService = scope.ServiceProvider.GetRequiredService<BotPlayerService>();
+
+                    // Count real players (non-bots)
+                    var allPlayers = await repo.FindAsync<RoomPlayer>(rp => rp.RoomId == room.RoomId);
+                    var realPlayerCount = 0;
+                    foreach (var player in allPlayers)
+                    {
+                        var user = await repo.FindOneAsync<User>(u => u.UserId == player.UserId);
+                        if (user != null && !user.IsBot)
+                        {
+                            realPlayerCount++;
+                        }
+                    }
+
+                    // Calculate and add required bots
+                    var requiredBotCount = botService.GetRequiredBotCount(realPlayerCount);
+                    if (requiredBotCount > 0)
+                    {
+                        await botService.AddBotsToRoomAsync(room.RoomId, requiredBotCount);
+                        await botService.PurchaseCardsForBotsAsync(room.RoomId);
+                    }
+
+                    // Now start the game
                     room.Status = RoomStatusEnum.InProgress;
                     room.StartedAt = DateTime.UtcNow;
                     await repo.UpdateAsync(room);
