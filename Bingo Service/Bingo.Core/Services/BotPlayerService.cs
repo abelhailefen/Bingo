@@ -2,8 +2,14 @@ using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities;
 using Bingo.Core.Entities.Enums;
 using Bingo.Core.Features.Gameplay.Contract.Command;
+using Bingo.Core.Hubs;
 using MediatR;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,6 +22,7 @@ public class BotPlayerService
     private readonly IBingoRepository _repository;
     private readonly IMediator _mediator;
     private readonly ILogger<BotPlayerService> _logger;
+    private readonly IHubContext<BingoHub> _hubContext;
     private static readonly Random _random = new();
 
     // Maximum number of bots we'll ever create in the system
@@ -25,11 +32,13 @@ public class BotPlayerService
     public BotPlayerService(
         IBingoRepository repository,
         IMediator mediator,
-        ILogger<BotPlayerService> logger)
+        ILogger<BotPlayerService> logger,
+        IHubContext<BingoHub> hubContext)
     {
         _repository = repository;
         _mediator = mediator;
         _logger = logger;
+        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -188,6 +197,11 @@ public class BotPlayerService
                 try
                 {
                     await _repository.PickMasterCardAsync(bot.UserId, roomId, selectedCardId);
+                    
+                    // Broadcast SignalR update so lobby shows card as taken
+                    await _hubContext.Clients.Group(roomId.ToString())
+                        .SendAsync("CardSelectionChanged", selectedCardId, true, bot.UserId);
+                    
                     _logger.LogInformation("Bot {BotUsername} selected card {CardId} in room {RoomId}", 
                         bot.Username, selectedCardId, roomId);
                 }

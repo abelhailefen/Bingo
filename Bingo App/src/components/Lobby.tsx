@@ -208,12 +208,26 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             });
         } else {
             if (newSelection.length >= 2) {
-                // Auto deselect first? Or strict limit?
-                // Strict limit for now
-                alert("You can only select up to 2 cards.");
-                return;
+                // Auto-deselect the first card and add the new one
+                const firstCardId = newSelection[0];
+                newSelection = [newSelection[1], cardId];
+                
+                // Remove the first card from preview
+                setPreviewCards(prev => {
+                    const newPrev = { ...prev };
+                    delete newPrev[firstCardId];
+                    return newPrev;
+                });
+                
+                // Unlock the first card via API
+                try {
+                    await selectCardLock(roomId, firstCardId, false, userId);
+                } catch (err) {
+                    console.error("Failed to unlock first card:", err);
+                }
+            } else {
+                newSelection.push(cardId);
             }
-            newSelection.push(cardId);
             
             // Fetch preview data if needed
             if (!previewCards[cardId]) {
