@@ -10,7 +10,7 @@ const App = () => {
     const [, setAuthToken] = useState<string | null>(null);
     const [wager, setWager] = useState<number | null>(null);
     const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
-    const [debugLogs, setDebugLogs] = useState<string[]>([]);
+   // const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
     useEffect(() => {
         const initTelegramAuth = async () => {
@@ -79,52 +79,38 @@ const App = () => {
             }
         };
 
-        const addLog = (msg: string) => {
-            console.log(msg);
-            setDebugLogs(prev => [...prev, msg]);
-        };
 
         const checkForActiveGame = async (uid: number) => {
             try {
-                addLog(`Checking for active game for user: ${uid}`);
                 // Check if user has any cards in a non-completed room
                 const response = await fetch(`/api/rooms/active-room/${uid}`);
-                addLog(`API response status: ${response.status}`);
                 
                 if (response.ok) {
                     const data = await response.json();
-                    addLog(`API data: ${JSON.stringify(data)}`);
                     
                     if (data.data && data.data.roomId) {
                         // User has an active game!
-                        addLog(`✅ Found active game! Room: ${data.data.roomId}`);
                         setActiveRoomId(data.data.roomId);
                         setWager(data.data.cardPrice);
                         setView('game');
                         return true;
                     } else {
-                        addLog('No active room in response data');
                     }
                 } else {
-                    addLog('API response not OK');
                 }
             } catch (err) {
-                addLog(`Error: ${err}`);
             }
             return false;
         };
 
         const init = async () => {
-            addLog('🚀 Starting app initialization');
             const tg = (window as any).Telegram?.WebApp;
 
             // 1. FAST PATH: Check Local Storage (Instant)
             const savedId = localStorage.getItem('bingo_user_id');
             const savedToken = localStorage.getItem('bingo_token');
             
-            addLog(`Saved id: ${savedId}`);
-            addLog(`Saved token: ${savedToken ? 'exists' : 'missing'}`);
-            
+           
             let currentUserId = null;
             
             // Use saved ID even if token is missing - we can still rejoin
@@ -134,31 +120,24 @@ const App = () => {
                 if (savedToken) {
                     setAuthToken(savedToken);
                 }
-                addLog(`Using saved userId: ${currentUserId}`);
             }
 
             // Try to get userId from Telegram if we don't have it from localStorage
             if (!currentUserId && tg?.initDataUnsafe?.user?.id) {
                 currentUserId = tg.initDataUnsafe.user.id;
                 setUserId(currentUserId);
-                addLog(`Using Telegram userId: ${currentUserId}`);
             }
 
             // Check for active game FIRST before showing wager selection
             if (currentUserId) {
-                addLog('Checking for active games...');
                 const hasActiveGame = await checkForActiveGame(currentUserId);
-                addLog(`Has active game: ${hasActiveGame}`);
                 
                 if (hasActiveGame) {
-                    addLog('✅ Active game found, staying in game view');
                     // View is already set to 'game' by checkForActiveGame
                 } else {
-                    addLog('No active game, showing wager selection');
                     setView('wager');
                 }
             } else {
-                addLog('No userId available, running full auth flow');
                 // No user ID yet, continue with full auth flow
                 await initTelegramAuth();
             }
@@ -212,46 +191,7 @@ const App = () => {
                     onLeave={handleBackToWager}
                 />
             )}
-            
-            {/* Debug logs overlay */}
-            {debugLogs.length > 0 && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    background: 'rgba(0,0,0,0.9)',
-                    color: '#0f0',
-                    padding: '10px',
-                    fontSize: '10px',
-                    fontFamily: 'monospace',
-                    maxHeight: '200px',
-                    overflow: 'auto',
-                    zIndex: 9999,
-                    borderBottom: '2px solid #0f0'
-                }}>
-                    <button 
-                        onClick={() => setDebugLogs([])}
-                        style={{
-                            position: 'absolute',
-                            top: '5px',
-                            right: '5px',
-                            background: '#f00',
-                            color: '#fff',
-                            border: 'none',
-                            padding: '2px 8px',
-                            cursor: 'pointer',
-                            fontSize: '10px'
-                        }}
-                    >
-                        Clear
-                    </button>
-                    <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>🐛 DEBUG LOGS:</div>
-                    {debugLogs.map((log, i) => (
-                        <div key={i} style={{ marginBottom: '2px' }}>{log}</div>
-                    ))}
-                </div>
-            )}
+           
         </div>
     );
 };
