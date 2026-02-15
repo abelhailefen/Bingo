@@ -175,9 +175,6 @@ public class RoomManagerService : BackgroundService
                 return;
             }
 
-            // Ensure enough bots exist in the database
-            await botService.EnsureBotsExistAsync(250); // Ensure we have all 250 bots
-
             // Calculate interval between bot joins (in milliseconds)
             // Spread bots across the countdown period
             var intervalMs = Math.Max(500, (countdownSeconds * 1000) / requiredBotCount);
