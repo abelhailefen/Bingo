@@ -19,7 +19,8 @@ public class BotPlayerService
     private static readonly Random _random = new();
 
     // Maximum number of bots we'll ever create in the system
-    private const int MaxBotCount = 50;
+    // Increased to 250 to support multiple concurrent rooms with different wager types
+    private const int MaxBotCount = 250;
 
     public BotPlayerService(
         IBingoRepository repository,
@@ -100,6 +101,111 @@ public class BotPlayerService
         }
 
         _logger.LogInformation("Successfully created {BotsToCreate} bot users", botsToCreate);
+    }
+
+    /// <summary>
+    /// Get an available bot that is not currently in any active room
+    /// </summary>
+    public async Task<User?> GetAvailableBotForRoomAsync(long roomId)
+    {
+        // Get all bots
+        var allBots = await _repository.FindAsync<User>(u => u.IsBot);
+
+        // Get bots that are in active rooms (Waiting or InProgress)
+        var activePlayers = await _repository.FindAsync<RoomPlayer>(rp =>
+            rp.Room.Status == RoomStatusEnum.Waiting || rp.Room.Status == RoomStatusEnum.InProgress);
+        
+        var busyBotIds = activePlayers.Select(rp => rp.UserId).ToHashSet();
+
+        // Find a bot that's not busy
+        var availableBot = allBots.FirstOrDefault(bot => !busyBotIds.Contains(bot.UserId));
+
+        if (availableBot == null)
+        {
+            _logger.LogWarning("No available bots found for room {RoomId}. All bots are in active rooms.", roomId);
+        }
+
+        return availableBot;
+    }
+
+    /// <summary>
+    /// Add a single bot to a room and have it select 1-2 random cards
+    /// This is used for gradual bot joining during countdown
+    /// </summary>
+    public async Task<bool> AddSingleBotToRoomAsync(long roomId)
+    {
+        try
+        {
+            // Get an available bot
+            var bot = await GetAvailableBotForRoomAsync(roomId);
+            if (bot == null)
+            {
+                _logger.LogWarning("Cannot add bot to room {RoomId} - no available bots", roomId);
+                return false;
+            }
+
+            // Check if bot is already in this room
+            var existingPlayer = await _repository.FindOneAsync<RoomPlayer>(rp =>
+                rp.RoomId == roomId && rp.UserId == bot.UserId);
+
+            if (existingPlayer != null)
+            {
+                _logger.LogInformation("Bot {BotId} is already in room {RoomId}", bot.UserId, roomId);
+                return false;
+            }
+
+            // Add bot as a RoomPlayer
+            await _repository.AddAsync(new RoomPlayer
+            {
+                RoomId = roomId,
+                UserId = bot.UserId,
+                JoinedAt = DateTime.UtcNow,
+                IsReady = true
+            });
+            await _repository.SaveChanges();
+
+            _logger.LogInformation("Bot {BotUsername} joined room {RoomId}", bot.Username, roomId);
+
+            // Purchase 1-2 random cards for the bot
+            int cardsToSelect = _random.Next(1, 3); // 1 or 2 cards
+            var takenCardIds = await _repository.GetTakenCards(roomId, CancellationToken.None);
+            var availableCardIds = Enumerable.Range(1, 100)
+                .Except(takenCardIds.Select(id => (int)id))
+                .ToList();
+
+            if (!availableCardIds.Any())
+            {
+                _logger.LogWarning("No available cards for bot {BotId} in room {RoomId}", bot.UserId, roomId);
+                return true; // Bot joined but couldn't select cards
+            }
+
+            for (int i = 0; i < cardsToSelect && availableCardIds.Any(); i++)
+            {
+                var randomIndex = _random.Next(availableCardIds.Count);
+                var selectedCardId = availableCardIds[randomIndex];
+                availableCardIds.RemoveAt(randomIndex);
+
+                try
+                {
+                    await _repository.PickMasterCardAsync(bot.UserId, roomId, selectedCardId);
+                    _logger.LogInformation("Bot {BotUsername} selected card {CardId} in room {RoomId}", 
+                        bot.Username, selectedCardId, roomId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to select card {CardId} for bot {BotId} in room {RoomId}",
+                        selectedCardId, bot.UserId, roomId);
+                }
+            }
+
+            await _repository.SaveChanges();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error adding single bot to room {RoomId}", roomId);
+            return false;
+        }
     }
 
     /// <summary>
