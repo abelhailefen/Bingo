@@ -122,37 +122,41 @@ const App = () => {
             const savedId = localStorage.getItem('bingo_user_id');
             const savedToken = localStorage.getItem('bingo_token');
             
-            addLog(`Saved userId: ${savedId}`);
+            addLog(`Saved id: ${savedId}`);
+            addLog(`Saved token: ${savedToken ? 'exists' : 'missing'}`);
             
             let currentUserId = null;
             
-            if (savedId && savedToken) {
+            // Use saved ID even if token is missing - we can still rejoin
+            if (savedId) {
                 currentUserId = parseInt(savedId);
                 setUserId(currentUserId);
-                setAuthToken(savedToken);
+                if (savedToken) {
+                    setAuthToken(savedToken);
+                }
                 addLog(`Using saved userId: ${currentUserId}`);
             }
 
-            // Try to get userId from various sources
+            // Try to get userId from Telegram if we don't have it from localStorage
             if (!currentUserId && tg?.initDataUnsafe?.user?.id) {
                 currentUserId = tg.initDataUnsafe.user.id;
                 setUserId(currentUserId);
                 addLog(`Using Telegram userId: ${currentUserId}`);
             }
 
-            // Check for active game before showing wager selection
+            // Check for active game FIRST before showing wager selection
             if (currentUserId) {
                 addLog('Checking for active games...');
                 const hasActiveGame = await checkForActiveGame(currentUserId);
                 addLog(`Has active game: ${hasActiveGame}`);
                 
-                if (!hasActiveGame) {
+                if (hasActiveGame) {
+                    addLog('✅ Active game found, staying in game view');
+                    // View is already set to 'game' by checkForActiveGame
+                } else {
                     addLog('No active game, showing wager selection');
                     setView('wager');
-                } else {
-                    addLog('Active game found, redirecting to game');
                 }
-                // If hasActiveGame is true, view is already set to 'game'
             } else {
                 addLog('No userId available, running full auth flow');
                 // No user ID yet, continue with full auth flow
