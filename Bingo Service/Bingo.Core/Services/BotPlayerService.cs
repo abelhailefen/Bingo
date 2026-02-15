@@ -63,8 +63,9 @@ public class BotPlayerService
             return;
         }
 
-        var existingBots = await _repository.FindAsync<User>(u => u.IsBot);
-        var existingBotCount = existingBots.Count();
+        // Get existing bots - use ToList to detach from tracking
+        var existingBots = (await _repository.FindAsync<User>(u => u.IsBot)).ToList();
+        var existingBotCount = existingBots.Count;
 
         if (existingBotCount >= count)
         {
@@ -77,10 +78,14 @@ public class BotPlayerService
         var botsToCreate = count - existingBotCount;
         _logger.LogInformation("Creating {BotsToCreate} new bot users", botsToCreate);
 
+        // Bot UserIds start from 1000001 to avoid conflicts with real users
+        const long BotUserIdStart = 1000000;
+
         for (int i = existingBotCount + 1; i <= count; i++)
         {
             var bot = new User
             {
+                UserId = BotUserIdStart + i, // Explicit UserId assignment
                 Username = $"Bot_{i}",
                 PhoneNumber = $"BOT_{i}",
                 PasswordHash = "BOT_NO_PASSWORD",
@@ -90,9 +95,10 @@ public class BotPlayerService
                 UpdatedAt = DateTime.UtcNow
             };
             await _repository.AddAsync(bot);
+            // Save after each bot to avoid EF tracking conflicts
+            await _repository.SaveChanges();
         }
 
-        await _repository.SaveChanges();
         _logger.LogInformation("Successfully created {BotsToCreate} bot users", botsToCreate);
     }
 
