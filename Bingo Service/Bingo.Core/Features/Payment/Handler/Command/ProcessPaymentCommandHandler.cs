@@ -5,7 +5,11 @@ using Bingo.Core.Features.PaymentService.Contract.Command;
 using Bingo.Core.Features.PaymentService.Contract.Service;
 using Bingo.Core.Models;
 using MediatR;
+using Microsoft.Extensions.Configuration;
 
+using Telegram.Bot; // Add this
+using Telegram.Bot.Types.Enums; // Add this
+using Telegram.Bot.Types.ReplyMarkups; // Add this
 namespace Bingo.Core.Features.PaymentService.Handler.Command;
 
 public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentCommand, Response<bool>>
@@ -22,10 +26,15 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
     private const string CBE_TARGET_NAME = "NAHOM SHIMELIS TESHOME";
     private const string CBE_TARGET_LAST4 = "2171";
 
-    public ProcessPaymentCommandHandler(IBingoRepository repository, IPaymentService paymentService)
+
+    private readonly ITelegramBotClient _botClient; 
+    private readonly string _adminGroupId;
+    public ProcessPaymentCommandHandler(IBingoRepository repository, IPaymentService paymentService, ITelegramBotClient botClient, IConfiguration config)
     {
         _repository = repository;
         _paymentService = paymentService;
+        _botClient = botClient;
+        _adminGroupId = config["TelegramBot:AdminGroupId"]!;
     }
 
     public async Task<Response<bool>> Handle(ProcessPaymentCommand request, CancellationToken ct)
@@ -112,6 +121,19 @@ public class ProcessPaymentCommandHandler : IRequestHandler<ProcessPaymentComman
             await _repository.AddAsync(paymentLog);
             await _repository.UpdateAsync(user);
             await _repository.SaveChanges();
+
+
+
+
+            string adminMsg = $"🚨 **New Deposit**\n\n" +
+                              $"👤 User: {user.Username}\n" +
+                              $"📞 Phone: `{user.PhoneNumber}`\n" +
+                              $"💰 Amount: {amountProcessed} ETB\n" +
+                              $"💳 User Balance: {user.Balance} ETB\n";
+
+            await _botClient.SendMessage(_adminGroupId, adminMsg,
+                parseMode: ParseMode.Markdown,
+                cancellationToken: ct);
 
 
             var result = Response<bool>.Success(true);
