@@ -6,6 +6,7 @@ using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities.Enums;
 using Bingo.Core.Hubs;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 
 
 namespace Bingo.Core.Features.Gameplay.Handler;
@@ -84,9 +85,12 @@ public class ClaimWinCommandHandler : IRequestHandler<ClaimWinCommand, Response<
              var user = await _repository.FindOneAsync<User>(u => u.UserId == request.UserId);
              string winnerName = user?.Username ?? "Unknown";
              
-             // Get the winning card with its numbers for display
-             var winningCard = await _repository.FindOneAsync<Card>(c => c.CardId == request.CardId, 
-                 includeProps: new[] { "MasterCard", "MasterCard.Numbers" });
+             // Get the winning card with its numbers for display using Include/ThenInclude
+             var cardQuery = await _repository.GetQueryAsync<Card>(c => c.CardId == request.CardId);
+             var winningCard = await cardQuery
+                 .Include(c => c.MasterCard)
+                     .ThenInclude(m => m.Numbers)
+                 .FirstOrDefaultAsync();
              
              // Prepare card data for frontend
              var cardNumbers = winningCard?.MasterCard?.Numbers?
