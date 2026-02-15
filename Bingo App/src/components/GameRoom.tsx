@@ -309,13 +309,23 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                                                     );
                                                     const val = cell?.number ?? null;
                                                     const isWinningCell = winningCells.has(`${r + 1}-${c + 1}`);
+                                                    const isCalled = val === null || drawnNumbers.includes(val);
+                                                    
+                                                    // Determine cell styling:
+                                                    // - Green: Part of winning pattern
+                                                    // - Yellow: Called but not part of winning pattern
+                                                    // - White: Not called
+                                                    let cellStyle = 'bg-white text-slate-800';
+                                                    if (isWinningCell) {
+                                                        cellStyle = 'bg-green-500 text-white';
+                                                    } else if (isCalled) {
+                                                        cellStyle = 'bg-yellow-400 text-slate-800';
+                                                    }
                                                     
                                                     return (
                                                         <div 
                                                             key={`${r}-${c}`} 
-                                                            className={`aspect-square flex items-center justify-center rounded-md text-base font-black border border-black/10 ${
-                                                                isWinningCell ? 'bg-green-500 text-white' : 'bg-white text-slate-800'
-                                                            }`}
+                                                            className={`aspect-square flex items-center justify-center rounded-md text-base font-black border border-black/10 ${cellStyle}`}
                                                         >
                                                             {val ?? '★'}
                                                         </div>
