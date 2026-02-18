@@ -138,84 +138,89 @@ public class RoomManagerService : BackgroundService
     {
         try
         {
-            using var scope = _serviceProvider.CreateScope();
-            var repo = scope.ServiceProvider.GetRequiredService<IBingoRepository>();
-            var botService = scope.ServiceProvider.GetRequiredService<BotPlayerService>();
+            int requiredBotCount = 0;
+            double intervalMs = 1000;
 
-            // Get room details
-            var room = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
-            if (room == null || room.Status != RoomStatusEnum.Waiting)
-                return;
-
-            // Calculate countdown duration
-            if (room.ScheduledStartTime == null)
-                return; // No scheduled start time
-                
-            var countdownSeconds = (room.ScheduledStartTime.Value - DateTime.UtcNow).TotalSeconds;
-            if (countdownSeconds <= 0)
-                return; // Already at or past start time
-
-            // Count real players
-            var allPlayers = await repo.FindAsync<RoomPlayer>(rp => rp.RoomId == roomId);
-            var realPlayerCount = 0;
-            foreach (var player in allPlayers)
+            // --- STEP 1: INITIAL CALCULATION ---
+            // Use a temporary scope just to calculate how many bots we need
+            using (var initialScope = _serviceProvider.CreateScope())
             {
-                var user = await repo.FindOneAsync<User>(u => u.UserId == player.UserId);
-                if (user != null && !user.IsBot)
+                var repo = initialScope.ServiceProvider.GetRequiredService<IBingoRepository>();
+                var botService = initialScope.ServiceProvider.GetRequiredService<BotPlayerService>();
+
+                var room = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
+                if (room == null || room.Status != RoomStatusEnum.Waiting || !room.ScheduledStartTime.HasValue)
+                    return;
+
+                var countdownSeconds = (room.ScheduledStartTime.Value - DateTime.UtcNow).TotalSeconds;
+                if (countdownSeconds <= 0) return;
+
+                // Count real players (non-bots)
+                var allPlayers = await repo.FindAsync<RoomPlayer>(rp => rp.RoomId == roomId);
+                int realPlayerCount = 0;
+                foreach (var p in allPlayers)
                 {
-                    realPlayerCount++;
+                    var user = await repo.FindOneAsync<User>(u => u.UserId == p.UserId);
+                    if (user != null && !user.IsBot) realPlayerCount++;
                 }
+
+                requiredBotCount = botService.GetRequiredBotCount(realPlayerCount);
+                if (requiredBotCount <= 0) return;
+
+                // Calculate timing
+                intervalMs = Math.Max(500, (countdownSeconds * 1000) / requiredBotCount);
+
+                _logger.LogInformation(
+                    "Room {RoomId}: Planning {BotCount} bots over {Countdown}s (Interval: {Interval}ms)",
+                    roomId, requiredBotCount, countdownSeconds, (int)intervalMs);
             }
 
-            var requiredBotCount = botService.GetRequiredBotCount(realPlayerCount);
-            if (requiredBotCount <= 0)
-            {
-                _logger.LogInformation("No bots needed for room {RoomId} with {RealPlayers} players", 
-                    roomId, realPlayerCount);
-                return;
-            }
-
-            // Calculate interval between bot joins (in milliseconds)
-            // Spread bots across the countdown period
-            var intervalMs = Math.Max(500, (countdownSeconds * 1000) / requiredBotCount);
-            
-            _logger.LogInformation(
-                "Starting gradual bot join for room {RoomId}: {BotCount} bots over {Countdown}s (interval: {Interval}ms)",
-                roomId, requiredBotCount, countdownSeconds, intervalMs);
-
+            // --- STEP 2: THE JOINING LOOP ---
             for (int i = 0; i < requiredBotCount; i++)
             {
+                // Exit if the cancellation token is triggered (Game started)
                 if (ct.IsCancellationRequested)
                     break;
 
-                // Check if room still in waiting status
-                var currentRoom = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
-                if (currentRoom == null || currentRoom.Status != RoomStatusEnum.Waiting)
+                // CRITICAL: Create a NEW scope for every single bot join attempt.
+                // This forces EF Core to bypass its internal cache and check the real DB status.
+                using (var loopScope = _serviceProvider.CreateScope())
                 {
-                    _logger.LogInformation("Room {RoomId} is no longer waiting, stopping bot joins", roomId);
-                    break;
+                    var repo = loopScope.ServiceProvider.GetRequiredService<IBingoRepository>();
+                    var botService = loopScope.ServiceProvider.GetRequiredService<BotPlayerService>();
+
+                    // Fetch fresh room status from the database
+                    var currentRoom = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
+
+                    // If the room moved to InProgress or was deleted, STOP immediately.
+                    if (currentRoom == null || currentRoom.Status != RoomStatusEnum.Waiting)
+                    {
+                        _logger.LogInformation("Room {RoomId} status changed to {Status}. Stopping bot joins.",
+                            roomId, currentRoom?.Status.ToString() ?? "Deleted");
+                        break;
+                    }
+
+                    // Add the bot
+                    var success = await botService.AddSingleBotToRoomAsync(roomId);
+                    if (!success)
+                    {
+                        _logger.LogWarning("Failed to add bot {Index}/{Total} to room {RoomId}",
+                            i + 1, requiredBotCount, roomId);
+                    }
                 }
 
-                // Add one bot
-                var success = await botService.AddSingleBotToRoomAsync(roomId);
-                if (!success)
-                {
-                    _logger.LogWarning("Failed to add bot {Index}/{Total} to room {RoomId}", 
-                        i + 1, requiredBotCount, roomId);
-                }
-
-                // Wait before adding next bot (unless it's the last bot)
+                // Wait before adding the next bot
                 if (i < requiredBotCount - 1)
                 {
                     await Task.Delay((int)intervalMs, ct);
                 }
             }
 
-            _logger.LogInformation("Completed gradual bot joining for room {RoomId}", roomId);
+            _logger.LogInformation("Completed gradual bot joining process for room {RoomId}", roomId);
         }
         catch (OperationCanceledException)
         {
-            _logger.LogInformation("Bot joining cancelled for room {RoomId}", roomId);
+            _logger.LogInformation("Bot joining task for room {RoomId} was cancelled (Game likely started).", roomId);
         }
         catch (Exception ex)
         {

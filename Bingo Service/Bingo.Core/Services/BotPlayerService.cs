@@ -146,12 +146,16 @@ public class BotPlayerService
         try
         {
             // Get an available bot
-            var bot = await GetAvailableBotForRoomAsync(roomId);
-            if (bot == null)
+            var room = await _repository.FindOneAsync<Room>(r => r.RoomId == roomId);
+            if (room == null || room.Status != RoomStatusEnum.Waiting)
             {
-                _logger.LogWarning("Cannot add bot to room {RoomId} - no available bots", roomId);
+                _logger.LogWarning("Blocking bot join: Room {RoomId} is either null or already InProgress.", roomId);
                 return false;
             }
+
+            // Get an available bot
+            var bot = await GetAvailableBotForRoomAsync(roomId);
+            if (bot == null) return false;
 
             // Check if bot is already in this room
             var existingPlayer = await _repository.FindOneAsync<RoomPlayer>(rp =>
@@ -215,7 +219,6 @@ public class BotPlayerService
             await _repository.SaveChanges();
             
             // Broadcast room stats update (player count and prize pool)
-            var room = await _repository.FindOneAsync<Room>(r => r.RoomId == roomId);
             if (room != null)
             {
                 var playerCount = await _repository.CountAsync<RoomPlayer>(rp => rp.RoomId == roomId);
