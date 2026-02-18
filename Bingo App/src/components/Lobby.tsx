@@ -355,7 +355,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                                 onClick={() => handleToggleCard(id)}
                                 className={`aspect-square flex items-center justify-center text-[10px] font-bold rounded transition-all 
                                     ${isSelected ? 'bg-orange-500 scale-110 shadow-lg text-white' :
-                                        isTaken ? 'bg-slate-800 opacity-20 cursor-not-allowed' :
+                                    isTaken ? 'bg-red-600/40 text-red-200 border border-red-500/50 cursor-not-allowed' :
                                             'bg-indigo-500/10 text-indigo-300'}`}>
                                 {id}
                             </button>
