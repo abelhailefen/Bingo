@@ -12,7 +12,7 @@ interface WagerSelectionProps {
  * Allows users to choose their wager amount (5, 10, 20, or 50 birr)
  */
 export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps) => {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     const [selectedWager, setSelectedWager] = useState<number | null>(null);
     const [balance, setBalance] = useState<number | null>(null);
     const wagerOptions = [5, 10, 20, 50];
@@ -122,22 +122,9 @@ export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps)
                 </button>
 
                 {/* Back to lobby option (optional) */}
-                <div className="text-center mt-4">
+                <div className="text-center mt-4 pb-12">
                     <button className="text-gray-400 hover:text-white transition-colors text-sm">
                         {t('Need more funds? Contact support')}
-                    </button>
-                </div>
-
-                {/* Language Toggle */}
-                <div className="flex justify-center mt-8 pb-4">
-                    <button 
-                        onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en')}
-                        className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 px-4 py-2 text-sm font-bold rounded-full transition-colors shadow-lg"
-                    >
-                        <span className="text-slate-400">🌍 {t('Switch Language')}</span>
-                        <span className="text-white uppercase px-2 py-0.5 bg-indigo-600 rounded-md">
-                            {i18n.language === 'en' ? 'EN' : 'AM'}
-                        </span>
                     </button>
                 </div>
             </div>

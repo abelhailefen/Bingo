@@ -257,7 +257,8 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             }
         } catch (err: any) {
              console.error("Card Toggle Error:", err);
-             alert(err.message || t("This card was just taken by someone else."));
+             // Silently catch the error so the popup doesn't annoy the user
+             // The UI will naturally render it Red since it's now in the `lockedCards` taken array
             
              // Revert the local selection entirely
              setSelectedIds(prev => prev.filter(id => id !== cardId));
