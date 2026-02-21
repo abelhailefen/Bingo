@@ -30,6 +30,8 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
     const [timerSeconds, setTimerSeconds] = useState<number>(0);
     const [isCountingUp, setIsCountingUp] = useState<boolean>(false);
     const [isWaitingForPreviousGame, setIsWaitingForPreviousGame] = useState<boolean>(false);
+    const [livePlayerCount, setLivePlayerCount] = useState<number>(0);
+    const [livePrizePool, setLivePrizePool] = useState<string>("0.00");
 
     const connectionRef = useRef<signalR.HubConnection | null>(null);
 
@@ -63,17 +65,6 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
     const canClaimBingo = useMemo(() => {
         return (roomData?.status === RoomStatus.InProgress || isCountingUp) && !winner && !gameOverMessage;
     }, [roomData, isCountingUp, winner, gameOverMessage]);
-
-    // Calculate total players including bots
-    const totalPlayers = useMemo(() => {
-        if (!roomData?.players) return 0;
-        return roomData.players.length;
-    }, [roomData]);
-
-    // Calculate prize pool
-    const prizePool = useMemo(() => {
-        return ((roomData?.cardPrice || 0) * totalPlayers * 0.87).toFixed(2);
-    }, [roomData, totalPlayers]);
 
     // --- BINGO CHECKER LOGIC ---
     const checkBingo = useCallback((card: any, drawn: number[]) => {
@@ -137,6 +128,11 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
 
             if (roomRes.data) {
                 setRoomData(roomRes.data);
+                
+                const playersCount = roomRes.data.players?.length || 0;
+                setLivePlayerCount(playersCount);
+                setLivePrizePool(((roomRes.data.cardPrice || 0) * playersCount * 0.87).toFixed(2));
+                
                 const called = roomRes.data.calledNumbers?.map((n: any) => n.number) || [];
                 setDrawnNumbers(called);
                 if (called.length > 0) updateCurrentNumber(called[called.length - 1]);
@@ -215,16 +211,10 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
 
             connection.on("RoomStatsUpdated", (rId, playerCount, prizePool) => {
                 if (Number(rId) !== roomId) return;
-                console.log(`Room stats updated: ${playerCount} players, ${prizePool} prize pool`);
                 
-                // Force a refresh to get accurate room data with actual player list
-                getRoom(roomId).then(res => {
-                    if (res.data) {
-                        setRoomData(res.data);
-                    }
-                }).catch(err => {
-                    console.error("Failed to refresh room data:", err);
-                });
+                // Directly update the UI perfectly in-sync with SignalR without touching HTTP Postgres again!
+                setLivePlayerCount(playerCount);
+                setLivePrizePool(prizePool.toFixed(2));
             });
 
 
@@ -421,9 +411,9 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             <div className="bg-[#1e293b] p-2 grid grid-cols-6 text-center text-[10px] font-bold border-b border-white/10 shrink-0 uppercase tracking-tighter">
                 <div className="flex flex-col"><span>{t('Room')}</span><span className="text-indigo-400">#{roomId}</span></div>
                 <div className="flex flex-col border-l border-white/10"><span>{t('Status')}</span><span className="text-indigo-400">{roomData?.status === RoomStatus.InProgress ? t('LIVE') : t('WAITING')}</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>{t('Players')}</span><span className="text-indigo-400">{totalPlayers}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>{t('Players')}</span><span className="text-indigo-400">{livePlayerCount}</span></div>
                 <div className="flex flex-col border-l border-white/10"><span>{t('Price')}</span><span className="text-indigo-400">{roomData?.cardPrice} {t('ETB')}</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>{t('Pool')}</span><span className="text-green-400">{prizePool} {t('ETB')}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>{t('Pool')}</span><span className="text-green-400">{livePrizePool} {t('ETB')}</span></div>
                 <div className="flex flex-col border-l border-white/10"><span>{t('Calls')}</span><span className="text-indigo-400">{drawnNumbers.length}</span></div>
             </div>
 
