@@ -171,22 +171,47 @@ public class RoomManagerService : BackgroundService
             }
 
             // --- STEP 2: THE JOINING LOOP ---
-            // Use ONE scope for the entire bulk operation to eliminate overhead
-            using (var loopScope = _serviceProvider.CreateScope())
+            for (int i = 0; i < assignedBots.Count; i++)
             {
-                var botService = loopScope.ServiceProvider.GetRequiredService<BotPlayerService>();
-                
-                // Do the giant bulk insert instantly (takes < 50ms)
-                // The BotService will natively detached-spawn the SignalR spaced broadcast loop internally
-                // so the user still sees them gradually arriving!
-                int added = await botService.BulkAddBotsWithCardsAsync(roomId, assignedBots, intervalMs, ct);
-                
-                if (added < assignedBots.Count) {
-                    _logger.LogWarning("Room {RoomId}: Bulk joined {Added}/{Planned} bots.", roomId, added, assignedBots.Count);
+                // Exit if the cancellation token is triggered (Game started)
+                if (ct.IsCancellationRequested)
+                    break;
+
+                var currentBot = assignedBots[i];
+
+                // Fire and forget the bot joining query in a separate background thread!
+                // This guarantees the 'intervalMs' spacing is rigidly adhered to visually,
+                // completely immune to PostgreSQL EF Core latency holding up the loop.
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var loopScope = _serviceProvider.CreateScope();
+                        var repo = loopScope.ServiceProvider.GetRequiredService<IBingoRepository>();
+                        var botService = loopScope.ServiceProvider.GetRequiredService<BotPlayerService>();
+
+                        // Fetch fresh room status from the database
+                        var currentRoom = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
+                        if (currentRoom == null || currentRoom.Status != RoomStatusEnum.Waiting)
+                            return;
+
+                        // Add the specific pre-allocated bot efficiently
+                        await botService.AddSpecificBotToRoomAsync(roomId, currentBot);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Background bot {BotId} spawn failed for room {RoomId}", currentBot.UserId, roomId);
+                    }
+                }, ct);
+
+                // Wait exactly the interval length before spacing out the next bot
+                if (i < assignedBots.Count - 1)
+                {
+                    await Task.Delay((int)intervalMs, ct);
                 }
             }
 
-            _logger.LogInformation("Completed instantaneous bulk bot joining process for room {RoomId}", roomId);
+            _logger.LogInformation("Completed gradual bot joining process for room {RoomId}", roomId);
         }
         catch (OperationCanceledException)
         {

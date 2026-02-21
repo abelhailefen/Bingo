@@ -142,113 +142,103 @@ public class BotPlayerService
     }
 
     /// <summary>
-    /// Instantly bulk-inserts bots and their cards into the database in ONE transaction.
-    /// Then, it natively spins off a detached SignalR broadcast loop that flawlessly simulates 
-    /// the bots joining gradually on the frontend UI over the provided intervals!
+    /// Adds a specific bot to a room and purchases random cards.
+    /// Designed to be run concurrently without blocking the main loop.
     /// </summary>
-    public async Task<int> BulkAddBotsWithCardsAsync(long roomId, List<User> bots, double intervalMs, CancellationToken ct)
+    public async Task<bool> AddSpecificBotToRoomAsync(long roomId, User bot)
     {
         try
         {
             var room = await _repository.FindOneAsync<Room>(r => r.RoomId == roomId);
-            if (room == null || room.Status != RoomStatusEnum.Waiting) return 0;
-
-            // Gather active bots in room
-            var existingPlayers = await _repository.FindAsync<RoomPlayer>(rp => rp.RoomId == roomId);
-            var existingSet = existingPlayers.Select(p => p.UserId).ToHashSet();
             
-            var botsToAdd = bots.Where(b => !existingSet.Contains(b.UserId)).ToList();
-            if (!botsToAdd.Any()) return 0;
+            // STRICT CHECK: Deny join if there is STRICTLY 5 seconds or less left, ignoring ANY previous game waits!
+            // This is a hard-enforced database rejection rule.
+            bool isTooLate = room?.ScheduledStartTime.HasValue == true && (room.ScheduledStartTime.Value - DateTime.UtcNow).TotalSeconds <= 5;
 
-            // 1. Bulk Build Entity Lists in memory!
-            var newPlayers = new List<RoomPlayer>();
-            foreach (var b in botsToAdd)
+            if (room == null || room.Status != RoomStatusEnum.Waiting || isTooLate)
             {
-                newPlayers.Add(new RoomPlayer { RoomId = roomId, UserId = b.UserId, JoinedAt = DateTime.UtcNow, IsReady = true });
+                _logger.LogWarning("Blocking bot join: Room {RoomId} is starting/InProgress. State: {State}, TimePassed: {Pass}", 
+                                   roomId, room?.Status.ToString(), isTooLate);
+                return false;
             }
 
-            // ONE safe Database Insert operation for room players!
-            foreach (var p in newPlayers) await _repository.AddAsync(p);
+            // Check if bot is already in this room (just in case)
+            var existingPlayer = await _repository.FindOneAsync<RoomPlayer>(rp =>
+                rp.RoomId == roomId && rp.UserId == bot.UserId);
+
+            if (existingPlayer != null)
+            {
+                return false;
+            }
+
+            // Add bot as a RoomPlayer
+            await _repository.AddAsync(new RoomPlayer
+            {
+                RoomId = roomId,
+                UserId = bot.UserId,
+                JoinedAt = DateTime.UtcNow,
+                IsReady = true
+            });
             await _repository.SaveChanges();
-            _logger.LogInformation("Successfully bulk inserted {Count} bots into DB for Room {RoomId}", botsToAdd.Count, roomId);
 
-            // 2. Safely Process Cards (We can't bulk pure cards easily due to unique index collision risks from live players) 
-            // but we can loop ReserveCardAsync quickly since EF bulk-inserting reservations is safe and extremely fast 
-            // compared to opening 70 detached parallel connection threads!
+            _logger.LogInformation("Bot {BotUsername} joined room {RoomId}", bot.Username, roomId);
+
+            // Purchase 1-2 random cards for the bot
+            int cardsToSelect = _random.Next(1, 3); // 1 or 2 cards
             var takenCardIds = await _repository.GetTakenCards(roomId, CancellationToken.None);
-            var availableCardIds = Enumerable.Range(1, 100).Except(takenCardIds.Select(id => (int)id)).ToList();
-            var shuffledCards = availableCardIds.OrderBy(x => _random.Next()).ToList();
-            int cardIndex = 0;
-            
-            var cardAssignments = new Dictionary<long, List<int>>();
+            var availableCardIds = Enumerable.Range(1, 100)
+                .Except(takenCardIds.Select(id => (int)id))
+                .ToList();
 
-            foreach (var bot in botsToAdd)
+            if (!availableCardIds.Any())
             {
-                int cardsToTake = _random.Next(1, 3);
-                var botCards = new List<int>();
-
-                for (int i = 0; i < cardsToTake && cardIndex < shuffledCards.Count; i++)
-                {
-                    int cId = shuffledCards[cardIndex++];
-                    try {
-                        bool reserved = await _repository.ReserveCardAsync(bot.UserId, roomId, cId);
-                        if (reserved)
-                        {
-                            await _repository.PurchaseReservedCardsAsync(bot.UserId, roomId, new List<int> { cId });
-                            botCards.Add(cId);
-                        }
-                    } catch { } // Ignore collisions gracefully
-                }
-                
-                if (botCards.Any()) cardAssignments[bot.UserId] = botCards;
+                return true; // Bot joined but couldn't select cards
             }
 
-            // 3. Spaced UI Broadcasting! (Fire-and-forget simulation)
-            _ = Task.Run(async () =>
+            for (int i = 0; i < cardsToSelect && availableCardIds.Any(); i++)
             {
+                var randomIndex = _random.Next(availableCardIds.Count);
+                var selectedCardId = availableCardIds[randomIndex];
+                availableCardIds.RemoveAt(randomIndex);
+
                 try
                 {
-                    int visualPlayers = existingPlayers.Count();
-                    int visualCards = await _repository.CountAsync<Card>(c => c.RoomId == roomId && c.State == CardLockState.Purchased);
-                    // Since the DB is fully loaded, `visualCards` already includes all the bots' cards!
-                    // Let's subtract the bot cards so we can artificially build the prize pool back up.
-                    int totalBotCards = cardAssignments.Values.Sum(v => v.Count);
-                    visualCards -= totalBotCards; 
-
-                    foreach (var bot in botsToAdd)
+                    bool reserved = await _repository.ReserveCardAsync(bot.UserId, roomId, selectedCardId);
+                    
+                    if (reserved)
                     {
-                        if (ct.IsCancellationRequested) break;
-                        visualPlayers++;
-                        
-                        if (cardAssignments.TryGetValue(bot.UserId, out var bCards))
-                        {
-                            visualCards += bCards.Count;
-                            foreach (var cId in bCards)
-                            {
-                                await _hubContext.Clients.Group(roomId.ToString())
-                                    .SendAsync("CardSelectionChanged", cId, true, bot.UserId);
-                            }
-                        }
+                         await _repository.PurchaseReservedCardsAsync(bot.UserId, roomId, new List<int> { selectedCardId });
 
-                        var visualPrizePool = visualCards * room.CardPrice * 0.87m;
+                        // Broadcast SignalR update so lobby shows card as taken
                         await _hubContext.Clients.Group(roomId.ToString())
-                            .SendAsync("RoomStatsUpdated", roomId, visualPlayers, visualPrizePool);
-
-                        await Task.Delay((int)intervalMs, ct);
+                            .SendAsync("CardSelectionChanged", selectedCardId, true, bot.UserId);
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                     _logger.LogError(ex, "Error in SignalR bot gradual broadcast simulation");
+                    // Ignore DB constraint collisions for bots and continue
                 }
-            });
+            }
 
-            return botsToAdd.Count;
+            await _repository.SaveChanges();
+            
+            // Broadcast room stats update (player count and prize pool)
+            if (room != null)
+            {
+                var playerCount = await _repository.CountAsync<RoomPlayer>(rp => rp.RoomId == roomId);
+                var cardCount = await _repository.CountAsync<Card>(c => c.RoomId == roomId);
+                var prizePool = cardCount * room.CardPrice * 0.87m; // 87% of total
+                
+                await _hubContext.Clients.Group(roomId.ToString())
+                    .SendAsync("RoomStatsUpdated", roomId, playerCount, prizePool);
+            }
+            
+            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to bulk add bots to {RoomId}", roomId);
-            return 0;
+            _logger.LogError(ex, "Error adding specific bot {BotId} to room {RoomId}", bot.UserId, roomId);
+            return false;
         }
     }
 
