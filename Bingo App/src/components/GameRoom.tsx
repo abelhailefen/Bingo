@@ -28,6 +28,10 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
     const [timerSeconds, setTimerSeconds] = useState<number>(0);
     const [isCountingUp, setIsCountingUp] = useState<boolean>(false);
     const [isWaitingForPreviousGame, setIsWaitingForPreviousGame] = useState<boolean>(false);
+    
+    // Natively track SignalR live stats without needing heavy Room API objects
+    const [livePlayerCount, setLivePlayerCount] = useState<number | null>(null);
+    const [livePrizePool, setLivePrizePool] = useState<number | null>(null);
 
     const connectionRef = useRef<signalR.HubConnection | null>(null);
 
@@ -64,14 +68,16 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
 
     // Calculate total players including bots
     const totalPlayers = useMemo(() => {
+        if (livePlayerCount !== null) return livePlayerCount;
         if (!roomData?.players) return 0;
         return roomData.players.length;
-    }, [roomData]);
+    }, [roomData, livePlayerCount]);
 
     // Calculate prize pool
     const prizePool = useMemo(() => {
+        if (livePrizePool !== null) return livePrizePool.toFixed(2);
         return ((roomData?.cardPrice || 0) * totalPlayers * 0.87).toFixed(2);
-    }, [roomData, totalPlayers]);
+    }, [roomData, totalPlayers, livePrizePool]);
 
     // --- BINGO CHECKER LOGIC ---
     const checkBingo = useCallback((card: any, drawn: number[]) => {
@@ -213,16 +219,11 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
 
             connection.on("RoomStatsUpdated", (rId, playerCount, prizePool) => {
                 if (Number(rId) !== roomId) return;
-                console.log(`Room stats updated: ${playerCount} players, ${prizePool} prize pool`);
                 
-                // Force a refresh to get accurate room data with actual player list
-                getRoom(roomId).then(res => {
-                    if (res.data) {
-                        setRoomData(res.data);
-                    }
-                }).catch(err => {
-                    console.error("Failed to refresh room data:", err);
-                });
+                // Directly update the local state natively! Avoid spamming the backend with 70 concurrent getRoom API calls which
+                // causes nasty race conditions during the exact moment the DB tries to commit the Game Start update.
+                setLivePlayerCount(playerCount);
+                setLivePrizePool(prizePool);
             });
 
 
