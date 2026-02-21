@@ -149,6 +149,10 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             connection.on("GameStarted", async (rId) => {
                 if (Number(rId) === roomId) {
                     setIsCountingUp(true);
+                    
+                    // Forcefully upgrade the local UI state immediately, even if the HTTP fetch below fails
+                    setRoomData(prev => prev ? { ...prev, status: RoomStatus.InProgress } : prev);
+
                     // Refresh room data to get updated player count (including bots)
                     try {
                         const roomRes = await getRoom(roomId);
@@ -164,6 +168,15 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             connection.on("NumberDrawn", (rId, number) => {
                 if (Number(rId) !== roomId) return;
                 setIsCountingUp(true);
+                
+                // Fallback: If we missed the GameStarted event or API failed, force status to InProgress
+                setRoomData(prev => {
+                    if (prev && prev.status === RoomStatus.Waiting) {
+                        return { ...prev, status: RoomStatus.InProgress };
+                    }
+                    return prev;
+                });
+
                 setDrawnNumbers(prev => prev.includes(number) ? prev : [...prev, number]);
                 updateCurrentNumber(number);
             });
