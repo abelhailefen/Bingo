@@ -151,6 +151,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 if (Number(rId) === roomId) {
                     setIsCountingUp(true);
                     setIsWaitingForPreviousGame(false);
+                    setTimerSeconds(0);
                     
                     // Forcefully upgrade the local UI state immediately, even if the HTTP fetch below fails
                     setRoomData(prev => prev ? { ...prev, status: RoomStatus.InProgress } : prev);
@@ -242,7 +243,8 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             const now = new Date().getTime();
             const start = new Date(roomData.scheduledStartTime).getTime();
             if (roomData.status === RoomStatus.Waiting) {
-                setTimerSeconds(Math.max(0, Math.floor((start - now) / 1000)));
+                const diff = Math.floor((start - now) / 1000);
+                setTimerSeconds(diff < 0 ? Math.abs(diff) : diff);
             } else if (roomData.status === RoomStatus.InProgress && !winner && !gameOverMessage) {
                 setTimerSeconds(prev => prev + 1);
             }
@@ -446,9 +448,9 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 <div className="flex-1 flex flex-col overflow-y-auto bg-[#020617] p-3 space-y-4">
                     <div className="bg-[#1e293b] rounded-xl p-4 flex items-center justify-between border border-indigo-500/20 shadow-xl shrink-0">
                         <div className="flex flex-col">
-                            <span className="text-indigo-200 font-black uppercase text-[10px] tracking-widest">{isCountingUp ? 'Duration' : 'Starts In'}</span>
+                            <span className="text-indigo-200 font-black uppercase text-[10px] tracking-widest">{isCountingUp ? 'Duration' : (isWaitingForPreviousGame ? 'Waiting' : 'Starts In')}</span>
                             <span className="text-xl font-mono font-bold text-indigo-400">
-                                {isWaitingForPreviousGame ? 'Waiting...' : formatTime(timerSeconds)}
+                                {formatTime(timerSeconds)}
                             </span>
                         </div>
                         <div className={`h-16 w-32 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${currentNumber ? 'bg-orange-600 border-white shadow-[0_0_20px_rgba(234,88,12,0.4)]' : 'bg-[#0f172a] border-indigo-500'}`}>
