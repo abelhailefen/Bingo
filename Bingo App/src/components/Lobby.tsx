@@ -1,5 +1,6 @@
 ﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import * as signalR from '@microsoft/signalr';
 import {
     joinAutoLobby,
@@ -29,6 +30,7 @@ interface LobbyProps {
 }
 
 export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
+    const { t } = useTranslation();
     const dispatch = useDispatch<AppDispatch>();
 
     const connectionRef = useRef<signalR.HubConnection | null>(null);
@@ -102,7 +104,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
         connection.on("WaitingForPreviousGame", (waitingRoomId: number) => {
             if (Number(waitingRoomId) === roomIdRef.current) {
-                setServerMessage("Waiting for previous game to finish...");
+                setServerMessage(t("Waiting for previous game to finish..."));
             }
         });
 
@@ -255,7 +257,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             }
         } catch (err: any) {
              console.error("Card Toggle Error:", err);
-             alert(err.message || "This card was just taken by someone else.");
+             alert(err.message || t("This card was just taken by someone else."));
             
              // Revert the local selection entirely
              setSelectedIds(prev => prev.filter(id => id !== cardId));
@@ -276,14 +278,14 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         if (!roomId) return;
         
         if (selectedIds.length === 0) {
-            alert("Please select at least one card first.");
+            alert(t("Please select at least one card first."));
             return;
         }
 
         // Balance Check Client Side
         const totalCost = selectedIds.length * wager;
         if (userBalance !== null && userBalance < totalCost) {
-            alert(`Insufficient Balance! You need ${totalCost.toFixed(2)} Birr but have ${userBalance.toFixed(2)} Birr.`);
+            alert(t('Insufficient Balance! You need {{cost}} Birr but have {{balance}} Birr.', { cost: totalCost.toFixed(2), balance: userBalance.toFixed(2) }));
             return;
         }
 
@@ -297,14 +299,14 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                 isTransitioningToGame.current = true;
                 onEnterGame(roomId);
             } else {
-                alert(res.message || "Purchase failed. Please try again.");
+                alert(res.message || t("Purchase failed. Please try again."));
                 // Refresh taken cards as maybe someone took it
                 const takenRes = await getTakenCards(roomId);
                 if (takenRes.data) dispatch(updateLockedCards(takenRes.data.map(Number)));
             }
         } catch (error: any) {
             console.error(error);
-            const errorMsg = error.response?.data?.message || "An error occurred during purchase.";
+            const errorMsg = error.response?.data?.message || t("An error occurred during purchase.");
             alert(errorMsg);
         } finally {
             setIsProcessing(false);
@@ -321,30 +323,30 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             {/* Header Stats */}
             <div className="grid grid-cols-4 gap-2 p-4 bg-indigo-900/40 border-b border-white/5">
                 <div className="bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg">
-                    <span className="text-[10px] font-bold text-indigo-400 uppercase">Room</span>
+                    <span className="text-[10px] font-bold text-indigo-400 uppercase">{t('Room')}</span>
                     <span className="text-lg font-black">{roomId ?? '--'}</span>
                 </div>
 
                 <div className="bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg">
-                    <span className="text-[10px] font-bold text-indigo-400 uppercase">Stake</span>
+                    <span className="text-[10px] font-bold text-indigo-400 uppercase">{t('Price')}</span>
                     <span className="text-lg font-black">{wager}</span>
                 </div>
                 
                  <div className="bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg">
-                    <span className="text-[10px] font-bold text-indigo-400 uppercase">Balance</span>
+                    <span className="text-[10px] font-bold text-indigo-400 uppercase">{t('Balance')}</span>
                      <span className="text-sm font-black text-green-600">
-                        {userBalance !== null ? `${userBalance} ETB` : '...'}
+                        {userBalance !== null ? `${userBalance} ${t('ETB')}` : '...'}
                     </span>
                  </div>
 
                 <div className={`bg-white rounded-xl py-2 flex flex-col items-center text-slate-900 shadow-lg border-2 transition-all duration-500 ${serverMessage || countdown < 10 ? 'border-orange-500' : 'border-transparent'}`}>
                     <span className="text-[10px] font-bold text-orange-400 uppercase">
-                        {serverMessage ? 'Status' : 'Starts In'}
+                        {serverMessage ? t('Status') : t('Starts In')}
                     </span>
                     <div className="flex items-center justify-center h-full">
                         {serverMessage ? (
                             <span className="text-[9px] font-black text-orange-600 uppercase text-center leading-none animate-pulse">
-                                Waiting for<br />Prev Game
+                                {t('WAITING FOR PREVIOUS GAME')}
                             </span>
                         ) : (
                             <span className={`text-lg font-black ${countdown < 10 ? 'text-red-600 animate-pulse' : 'text-indigo-600'}`}>
@@ -428,7 +430,7 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                                         ))}
                                     </div>
                                      <div className="mt-2 text-center text-[10px] text-slate-400 font-bold uppercase">
-                                        {wager} ETB
+                                        {wager} {t('ETB')}
                                     </div>
                                 </div>
                             ) : (
@@ -447,18 +449,14 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                     onClick={onBack}
                     className="bg-slate-800 text-white py-4 rounded-2xl font-black text-sm uppercase"
                 >
-                    LEAVE
+                    {t('LEAVE')}
                 </button>
                 <button
+                    disabled={countdown <= 1 || selectedIds.length === 0 || isProcessing}
                     onClick={handleConfirmJoin}
-                    disabled={selectedIds.length === 0 || isProcessing}
-                    className={`py-4 rounded-2xl font-black text-sm uppercase transition-all ${selectedIds.length > 0 && !isProcessing
-                        ? 'bg-green-600 text-white shadow-lg shadow-green-900/20'
-                        : 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                        }`}
+                    className={`py-4 rounded-2xl font-black text-sm uppercase shadow-lg transition-all ${selectedIds.length === 0 || countdown <= 1 || isProcessing ? 'bg-indigo-900/50 text-indigo-400/50 grayscale' : 'bg-gradient-to-r from-orange-500 to-red-500 text-white active:scale-95'}`}
                 >
-                    {isProcessing ? 'PROCESSING...' : 
-                     selectedIds.length > 0 ? `BUY FOR ${selectedIds.length * wager} BIRR` : 'SELECT CARD'}
+                    {isProcessing ? t('PROCESSING') : `${t('BUY CARDS')} (${selectedIds.length})`}
                 </button>
             </div>
         </div>

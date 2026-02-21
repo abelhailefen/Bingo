@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getUser } from '../services/api';
 
 interface WagerSelectionProps {
@@ -11,6 +12,7 @@ interface WagerSelectionProps {
  * Allows users to choose their wager amount (5, 10, 20, or 50 birr)
  */
 export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps) => {
+    const { t } = useTranslation();
     const [selectedWager, setSelectedWager] = useState<number | null>(null);
     const [balance, setBalance] = useState<number | null>(null);
     const wagerOptions = [5, 10, 20, 50];
@@ -42,15 +44,15 @@ export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps)
                 {/* Header */}
                 <div className="text-center mb-8">
                     <h1 className="text-4xl font-bold text-white mb-2">
-                        Choose Your Wager
+                        {t('Choose Your Wager')}
                     </h1>
                     <p className="text-gray-300">
-                        Select how much birr you want to wager for this game
+                        {t('Select how much birr you want to wager for this game')}
                     </p>
                     {balance !== null && (
                         <div className="mt-4 inline-block bg-slate-800/50 px-4 py-2 rounded-full border border-green-500/30">
-                            <span className="text-gray-400 text-sm">Your Balance: </span>
-                            <span className="text-green-400 font-bold">{balance} ETB</span>
+                            <span className="text-gray-400 text-sm">{t('Your Balance:')} </span>
+                            <span className="text-green-400 font-bold">{balance} {t('ETB')}</span>
                         </div>
                     )}
                 </div>
@@ -80,7 +82,7 @@ export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps)
                                         {amount}
                                     </div>
                                     <div className="text-sm text-gray-400 uppercase tracking-wide">
-                                        Birr
+                                        {t('Birr')}
                                     </div>
                                 </div>
 
@@ -105,7 +107,6 @@ export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps)
                     })}
                 </div>
 
-                {/* Continue Button */}
                 <button
                     onClick={handleContinue}
                     disabled={!selectedWager}
@@ -117,13 +118,13 @@ export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps)
                         }
                     `}
                 >
-                    {selectedWager ? `Continue with ${selectedWager} Birr` : 'Select a Wager'}
+                    {selectedWager ? t('Continue with {{amount}} Birr', { amount: selectedWager }) : t('Select a Wager')}
                 </button>
 
                 {/* Back to lobby option (optional) */}
                 <div className="text-center mt-4">
                     <button className="text-gray-400 hover:text-white transition-colors text-sm">
-                        Need more funds? Contact support
+                        {t('Need more funds? Contact support')}
                     </button>
                 </div>
             </div>

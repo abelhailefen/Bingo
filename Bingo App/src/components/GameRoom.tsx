@@ -1,10 +1,11 @@
 ﻿import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import * as signalR from '@microsoft/signalr';
 import Confetti from 'react-confetti';
 import { getRoom, getMyCards, claimBingo, leaveLobby } from '../services/api';
 import { resetLobby } from '../store/gameSlice';
-import type { RootState } from '../store';
+import type { RootState, AppDispatch } from '../store';
 import { RoomStatus } from '../types/enums';
 import type { Room } from '../types/room';
 
@@ -15,7 +16,8 @@ interface GameRoomProps {
 }
 
 export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
-    const dispatch = useDispatch();
+    const { t } = useTranslation();
+    const dispatch = useDispatch<AppDispatch>();
 
     // --- STATE ---
     const [isAutoMode, setIsAutoMode] = useState(() => localStorage.getItem(`autoMode_${userId}`) === 'true');
@@ -311,8 +313,8 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
                     <div className="bg-indigo-950 border-2 border-orange-500 rounded-3xl p-8 w-full max-w-lg text-center shadow-2xl my-6">
                         <div className="text-6xl mb-4">🏆</div>
-                        <h2 className="text-4xl font-black mb-2 italic text-white">BINGO!</h2>
-                        <p className="text-orange-400 font-bold text-xl mb-6">{winner.username.toUpperCase()} WON</p>
+                        <h2 className="text-4xl font-black mb-2 italic text-white">{t('BINGO!')}</h2>
+                        <p className="text-orange-400 font-bold text-xl mb-6">{t('{{username}} WON', { username: winner.username.toUpperCase() })}</p>
                         
                         {/* Winning Card Display */}
                         {winner.cardNumbers && winner.cardNumbers.length > 0 && (() => {
@@ -348,7 +350,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                             
                             return (
                                 <div className="mb-6">
-                                    <p className="text-slate-300 text-sm font-bold mb-3">Winning Card</p>
+                                    <p className="text-slate-300 text-sm font-bold mb-3">{t('Winning Card')}</p>
                                     <div className="w-full max-w-[280px] mx-auto bg-[#fefce8] p-3 rounded-xl shadow-2xl border-b-8 border-black/10">
                                         <div className="grid grid-cols-5 text-center font-black text-base mb-2">
                                             <span className="text-orange-600">B</span>
@@ -395,10 +397,10 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                         })()}
                         
                         <div className="bg-white/10 rounded-2xl p-4 mb-6">
-                            <p className="text-slate-400 text-xs uppercase font-bold">Prize Pool</p>
-                            <p className="text-3xl font-black text-green-400">{winner.prize} ETB</p>
+                            <p className="text-slate-400 text-xs uppercase font-bold">{t('Prize Pool')}</p>
+                            <p className="text-3xl font-black text-green-400">{winner.prize} {t('ETB')}</p>
                         </div>
-                        <button onClick={handleLeave} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl">PLAY AGAIN</button>
+                        <button onClick={handleLeave} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl">{t('PLAY AGAIN')}</button>
                     </div>
                 </div>
             )}
@@ -408,21 +410,21 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
                     <div className="bg-slate-900 border-2 border-red-500 rounded-3xl p-8 w-full max-sm text-center shadow-2xl">
                         <div className="text-6xl mb-4">⌛</div>
-                        <h2 className="text-4xl font-black mb-2 italic text-white">GAME OVER</h2>
+                        <h2 className="text-4xl font-black mb-2 italic text-white">{t('GAME OVER')}</h2>
                         <p className="text-red-400 font-bold text-lg mb-6 uppercase tracking-wider">{gameOverMessage}</p>
-                        <button onClick={handleLeave} className="w-full py-4 bg-slate-700 hover:bg-slate-600 text-white font-black rounded-xl">BACK TO WAGERS</button>
+                        <button onClick={handleLeave} className="w-full py-4 bg-slate-700 hover:bg-slate-600 text-white font-black rounded-xl">{t('BACK TO WAGERS')}</button>
                     </div>
                 </div>
             )}
 
             {/* TOP BAR */}
             <div className="bg-[#1e293b] p-2 grid grid-cols-6 text-center text-[10px] font-bold border-b border-white/10 shrink-0 uppercase tracking-tighter">
-                <div className="flex flex-col"><span>Room</span><span className="text-indigo-400">#{roomId}</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>Status</span><span className="text-indigo-400">{roomData?.status === RoomStatus.InProgress ? 'LIVE' : 'WAITING'}</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>Players</span><span className="text-indigo-400">{totalPlayers}</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>Price</span><span className="text-indigo-400">{roomData?.cardPrice} ETB</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>Pool</span><span className="text-green-400">{prizePool} ETB</span></div>
-                <div className="flex flex-col border-l border-white/10"><span>Calls</span><span className="text-indigo-400">{drawnNumbers.length}</span></div>
+                <div className="flex flex-col"><span>{t('Room')}</span><span className="text-indigo-400">#{roomId}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>{t('Status')}</span><span className="text-indigo-400">{roomData?.status === RoomStatus.InProgress ? t('LIVE') : t('WAITING')}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>{t('Players')}</span><span className="text-indigo-400">{totalPlayers}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>{t('Price')}</span><span className="text-indigo-400">{roomData?.cardPrice} {t('ETB')}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>{t('Pool')}</span><span className="text-green-400">{prizePool} {t('ETB')}</span></div>
+                <div className="flex flex-col border-l border-white/10"><span>{t('Calls')}</span><span className="text-indigo-400">{drawnNumbers.length}</span></div>
             </div>
 
             <div className="flex flex-1 overflow-hidden">
@@ -459,7 +461,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 <div className="flex-1 flex flex-col overflow-y-auto bg-[#020617] p-3 space-y-4">
                     <div className="bg-[#1e293b] rounded-xl p-4 flex items-center justify-between border border-indigo-500/20 shadow-xl shrink-0">
                         <div className="flex flex-col">
-                            <span className="text-indigo-200 font-black uppercase text-[10px] tracking-widest">{isCountingUp ? 'Duration' : (isWaitingForPreviousGame ? 'Waiting' : 'Starts In')}</span>
+                            <span className="text-indigo-200 font-black uppercase text-[10px] tracking-widest">{isCountingUp ? t('Duration') : (isWaitingForPreviousGame ? t('Waiting') : t('Starts In'))}</span>
                             <span className="text-xl font-mono font-bold text-indigo-400">
                                 {formatTime(timerSeconds)}
                             </span>
@@ -494,9 +496,9 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                                         })
                                     ))}
                                 </div>
-                                <p className="text-center text-[10px] font-bold text-slate-400 mt-3 uppercase tracking-widest">Ticket ID: {card.userCardId}</p>
+                                <p className="text-center text-[10px] font-bold text-slate-400 mt-3 uppercase tracking-widest">{t('Ticket ID: {{id}}', { id: card.userCardId })}</p>
                             </div>
-                        )) : <div className="text-center text-slate-500 py-20 italic">Loading boards...</div>}
+                        )) : <div className="text-center text-slate-500 py-20 italic">{t('Loading boards...')}</div>}
                     </div>
                 </div>
             </div>
@@ -505,7 +507,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             <div className="p-3 bg-[#0f172a] border-t border-white/10 space-y-3 shrink-0 z-50">
                 <div className="flex justify-start">
                     <button onClick={() => setIsAutoMode(!isAutoMode)} className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all ${isAutoMode ? 'bg-green-950/30 border-green-500/50' : 'bg-slate-800 border-transparent'}`}>
-                        <span className={`text-[10px] font-bold uppercase ${isAutoMode ? 'text-green-400' : 'text-slate-300'}`}>Auto-Mark {isAutoMode ? 'ON' : 'OFF'}</span>
+                        <span className={`text-[10px] font-bold uppercase ${isAutoMode ? 'text-green-400' : 'text-slate-300'}`}>{t('Auto-Mark')} {isAutoMode ? t('ON') : t('OFF')}</span>
                         <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${isAutoMode ? 'bg-green-600' : 'bg-slate-600'}`}>
                             <span className={`inline-block h-2 w-2 transform rounded-full bg-white transition-transform ${isAutoMode ? 'translate-x-5' : 'translate-x-1'}`} />
                         </div>
@@ -517,11 +519,11 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                     disabled={!canClaimBingo}
                     className="w-full py-5 rounded-2xl font-black text-3xl text-white bg-orange-600 hover:bg-orange-500 shadow-[0_6px_0_rgb(154,52,18)] active:translate-y-1 transition-all disabled:opacity-50 disabled:grayscale"
                 >
-                    {winner || gameOverMessage ? 'GAME ENDED' : 'BINGO!'}
+                    {winner || gameOverMessage ? t('GAME ENDED') : t('BINGO!')}
                 </button>
 
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={handleLeave} className="bg-red-950/30 border border-red-500/30 py-3 rounded-xl font-bold text-xs uppercase text-red-500">Back to Wagers</button>
+                    <button onClick={handleLeave} className="bg-red-950/30 border border-red-500/30 py-3 rounded-xl font-bold text-xs uppercase text-red-500">{t('Back to Wagers')}</button>
                 </div>
             </div>
         </div>

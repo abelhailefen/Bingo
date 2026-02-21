@@ -15,9 +15,11 @@
     "@types/canvas-confetti": "^1.9.0",
     "axios": "^1.13.2",
     "canvas-confetti": "^1.9.4",
+    "i18next": "^25.8.13",
     "react": "^19.2.3",
     "react-confetti": "^6.4.0",
     "react-dom": "^19.2.3",
+    "react-i18next": "^16.5.4",
     "react-redux": "^9.2.0"
   },
   "devDependencies": {
