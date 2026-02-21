@@ -255,6 +255,18 @@ public class BingoDbContext : DbContext
                 .HasColumnName("purchased_at")
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+            entity.Property(e => e.State)
+                .HasColumnName("state")
+                .HasConversion<int>()
+                .HasDefaultValue(CardLockState.Purchased); // Legacy cards are purchased
+
+            entity.Property(e => e.ReservationExpiresAt)
+                .HasColumnName("reservation_expires_at");
+
+            entity.Property(e => e.RowVersion)
+                .HasColumnName("row_version")
+                .IsRowVersion();
+
             entity.HasIndex(e => new { e.RoomId, e.UserId, e.MasterCardId })
                 .IsUnique();
 

@@ -241,12 +241,31 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
         setSelectedIds(newSelection);
 
-        // Optional: Broadcast "Looking at" (Soft Lock) 
-        // We use selectCardLock but know it doesn't persist DB anymore
+        // We optimistically select it locally, but then call the API to reserve it.
+        // If the API fails (e.g. taken by another player, sniped at the last millisecond), we revert the selection immediately.
         try {
-            await selectCardLock(roomId, cardId, !isSelected, userId);
-        } catch (err) {
-            console.error("Card Toggle Error:", err);
+            const result = await selectCardLock(roomId, cardId, !isSelected, userId);
+            
+            // If the server explicitly rejected the locking attempt (e.g., someone just bought it)
+            if (result && result.isFailed) {
+                throw new Error(result.message || "Failed to reserve card.");
+            }
+        } catch (err: any) {
+             console.error("Card Toggle Error:", err);
+             alert(err.message || "This card was just taken by someone else.");
+            
+             // Revert the local selection entirely
+             setSelectedIds(prev => prev.filter(id => id !== cardId));
+             setPreviewCards(prev => {
+                const newPrev = { ...prev };
+                delete newPrev[cardId];
+                return newPrev;
+            });
+            
+             // Fetch updated lock list just in case
+             getTakenCards(roomId).then(takenRes => {
+                if (takenRes.data) dispatch(updateLockedCards(takenRes.data.map(Number)));
+             });
         }
     };
 

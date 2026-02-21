@@ -1,4 +1,4 @@
-﻿using Bingo.Core.Entities;
+using Bingo.Core.Entities;
 using Bingo.Core.Entities.Enums;
 using System.Linq.Expressions;
 
@@ -13,6 +13,12 @@ public interface IBingoRepository
 
     // Updated: Replaced CreateCardWithNumbersAsync with PickMasterCardAsync
     Task<Card> PickMasterCardAsync(long userId, long roomId, int masterCardId);
+    
+    // NEW: Atomic Lock and Purchase Methods
+    Task<bool> ReserveCardAsync(long userId, long roomId, int masterCardId);
+    Task<bool> ReleaseCardReservationAsync(long userId, long roomId, int masterCardId);
+    Task<bool> PurchaseReservedCardsAsync(long userId, long roomId, List<int> masterCardIds);
+
     Task<MasterCard> GetMasterCard(long masterCardId, CancellationToken ct);
     Task<Room> GetAvailableRoom(decimal cardPrice, CancellationToken ct);
     Task<Room> GetRoomById (long roomId);

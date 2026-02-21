@@ -1,6 +1,7 @@
 ﻿using Bingo.Core.Contract.Hub;
 using Bingo.Core.Contract.Repository;
 using Bingo.Core.Entities;
+using Bingo.Core.Entities.Enums;
 using Bingo.Core.Features.Gameplay.Contract.Command;
 using Bingo.Core.Models;
 using MediatR;
@@ -24,44 +25,35 @@ namespace Bingo.Core.Features.Gameplay.Handler
         {
             if (request.IsSelecting)
             {
-                // 1. Check if THIS specific user already has this card (Idempotency)
-                var alreadyMine = await _repository.CountAsync<Card>(c =>
-                    c.RoomId == request.RoomId &&
-                    c.UserId == request.UserId &&
-                    c.MasterCardId == request.MasterCardId) > 0;
-
-                // If I already own it, just return success so the UI stays in sync
-                if (alreadyMine) return Response<bool>.Success(true);
-
-                // 2. Check if SOMEONE ELSE has this card
-                var isTakenByOther = await _repository.CountAsync<Card>(c =>
-                    c.RoomId == request.RoomId &&
-                    c.MasterCardId == request.MasterCardId) > 0;
-
-                if (isTakenByOther)
-                    return Response<bool>.Error("This card has been snatched by another player!");
-
-                // 3. Check Limit (Max 2)
-                var userCardCount = await _repository.CountAsync<Card>(c =>
+                // 1. Check Limits (Max 2 cards)
+                var userCards = await _repository.FindAsync<Card>(c => 
                     c.RoomId == request.RoomId && c.UserId == request.UserId);
+                    
+                var activeUserCards = userCards.Where(c => 
+                    c.State == CardLockState.Purchased || 
+                    (c.State == CardLockState.Reserved && c.ReservationExpiresAt > DateTime.UtcNow)).ToList();
 
-                if (userCardCount >= 2)
+                // Idempotency check: if we already reserved/purchased THIS card, we are good
+                if (activeUserCards.Any(c => c.MasterCardId == request.MasterCardId))
+                {
+                    return Response<bool>.Success(true);
+                }
+
+                if (activeUserCards.Count >= 2)
                     return Response<bool>.Error("You can only choose a maximum of 2 cards.");
 
-                // 4. Save the selection
-                // REMOVED: Do not persist card reservation without payment.
-                // await _repository.PickMasterCardAsync(request.UserId, request.RoomId, request.MasterCardId);
+                // 2. Atomically attempt to reserve
+                bool reserved = await _repository.ReserveCardAsync(request.UserId, request.RoomId, request.MasterCardId);
+                
+                if (!reserved)
+                {
+                    return Response<bool>.Error("This card is already taken or actively being previewed by another player.");
+                }
             }
             else
             {
-                // UNSELECT LOGIC: Remove the record from the database
-                // REMOVED:
-                // await _repository.DeleteAsync<Card>(c =>
-                //     c.RoomId == request.RoomId &&
-                //     c.UserId == request.UserId &&
-                //     c.MasterCardId == request.MasterCardId);
-                
-                // await _repository.SaveChanges();
+                // UNSELECT LOGIC: Release the reservation explicitly
+                await _repository.ReleaseCardReservationAsync(request.UserId, request.RoomId, request.MasterCardId);
             }
 
             // 5. BROADCAST THE CHANGE

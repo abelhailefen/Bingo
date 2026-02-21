@@ -71,7 +71,8 @@ public class BingoRepository : IBingoRepository
             UserId = userId,
             RoomId = roomId,
             MasterCardId = masterCardId,
-            PurchasedAt = DateTime.UtcNow
+            PurchasedAt = DateTime.UtcNow,
+            State = CardLockState.Purchased // Ensure hard lock
         };
 
         await _context.Cards.AddAsync(card);
@@ -82,6 +83,132 @@ public class BingoRepository : IBingoRepository
         await _context.Entry(card.MasterCard).Collection(m => m.Numbers).LoadAsync();
 
         return card;
+    }
+
+    public async Task<bool> ReserveCardAsync(long userId, long roomId, int masterCardId)
+    {
+        while (true)
+        {
+            var card = await _context.Cards
+                .FirstOrDefaultAsync(c => c.RoomId == roomId && c.MasterCardId == masterCardId);
+
+            if (card == null)
+            {
+                // Card not taken at all, create it as a reservation
+                card = new Card
+                {
+                    RoomId = roomId,
+                    MasterCardId = masterCardId,
+                    UserId = userId,
+                    State = CardLockState.Reserved,
+                    ReservationExpiresAt = DateTime.UtcNow.AddSeconds(45)
+                };
+                
+                await _context.Cards.AddAsync(card);
+                
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    return true;
+                }
+                catch (DbUpdateException) // Could be a unique index violation if two threads insert simultaneously
+                {
+                    // Someone else inserted it just now, loop and try to read it again
+                    _context.Entry(card).State = EntityState.Detached; // clean up local context
+                    continue;
+                }
+            }
+            else
+            {
+                // Card exists. Is it available?
+                bool isAvailable = card.State == CardLockState.Reserved && 
+                                   card.ReservationExpiresAt.HasValue && 
+                                   card.ReservationExpiresAt.Value < DateTime.UtcNow;
+
+                // Idempotency: Is it already our active reservation?
+                bool isMine = card.UserId == userId && card.State == CardLockState.Reserved && 
+                              card.ReservationExpiresAt.HasValue && 
+                              card.ReservationExpiresAt.Value >= DateTime.UtcNow;
+
+                if (isMine) return true;
+                if (!isAvailable) return false;
+
+                // Reclaim the expired reservation for this new user
+                card.UserId = userId; // Transfer ownership to new reserving user
+                card.ReservationExpiresAt = DateTime.UtcNow.AddSeconds(45);
+                
+                try
+                {
+                    await _context.SaveChangesAsync(); // Optimistic concurrency will catch concurrent edits
+                    return true;
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    // Conflict, someone else modified it. Loop and evaluate again
+                    continue;
+                }
+            }
+        }
+    }
+
+    public async Task<bool> ReleaseCardReservationAsync(long userId, long roomId, int masterCardId)
+    {
+        var card = await _context.Cards
+            .FirstOrDefaultAsync(c => c.RoomId == roomId && c.MasterCardId == masterCardId && c.UserId == userId && c.State == CardLockState.Reserved);
+
+        if (card == null) return true; // Already gone or not ours
+
+        // Soft delete/release by marking it expired, or we could just remove the row entirely.
+        // Let's remove it entirely if it's just a reservation to keep table clean.
+        _context.Cards.Remove(card);
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> PurchaseReservedCardsAsync(long userId, long roomId, List<int> masterCardIds)
+    {
+        // Require explicit transaction
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var cards = await _context.Cards
+                .Where(c => c.RoomId == roomId && masterCardIds.Contains((int)c.MasterCardId))
+                .ToListAsync();
+
+            if (cards.Count != masterCardIds.Count)
+            {
+                return false; // Some cards don't exist
+            }
+
+            foreach (var card in cards)
+            {
+                bool isMyReservation = card.State == CardLockState.Reserved && 
+                                       card.UserId == userId && 
+                                       card.ReservationExpiresAt > DateTime.UtcNow;
+
+                bool isAlreadyPurchasedByMe = card.State == CardLockState.Purchased && card.UserId == userId;
+
+                if (isAlreadyPurchasedByMe) continue; // Idempotency
+                
+                if (!isMyReservation)
+                {
+                    return false; // Sniped or expired! Abort entire batch.
+                }
+
+                card.State = CardLockState.Purchased;
+                card.ReservationExpiresAt = null;
+                card.PurchasedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return true;
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            return false;
+        }
     }
 
     public async Task<List<int>> GetCalledNumbersAsync(long roomId)

@@ -21,7 +21,6 @@ namespace Bingo.Core.Features.Gameplay.Handler
     {
         private readonly IBingoRepository _repository;
         private readonly IHubContext<BingoHub> _hubContext;
-        private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
         public PurchaseCardsCommandHandler(IBingoRepository repository, IHubContext<BingoHub> hubContext)
         {
@@ -31,8 +30,6 @@ namespace Bingo.Core.Features.Gameplay.Handler
 
         public async Task<Response<bool>> Handle(PurchaseCardsCommand request, CancellationToken cancellationToken)
         {
-            // Lock to ensure atomicity for user balance and card availability
-            await _semaphore.WaitAsync(cancellationToken);
             try
             {
                 // 1. Validation: Max 2 Cards
@@ -43,14 +40,9 @@ namespace Bingo.Core.Features.Gameplay.Handler
 
                 // 2. Load Room and Validate Status
                 var room = await _repository.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
-                if (room == null)
+                if (room == null || room.Status != RoomStatusEnum.Waiting)
                 {
-                    return Response<bool>.Error("Room not found.");
-                }
-
-                if (room.Status != RoomStatusEnum.Waiting)
-                {
-                    return Response<bool>.Error("Game has already started or finished.");
+                    return Response<bool>.Error("Room is not available for joining.");
                 }
 
                 // 3. Load User
@@ -60,86 +52,60 @@ namespace Bingo.Core.Features.Gameplay.Handler
                     return Response<bool>.Error("User not found.");
                 }
 
-                // 4. Calculate Total Cost
+                // 4. Calculate Total Cost & Check Balance
                 var totalCost = room.CardPrice * request.MasterCardIds.Count;
-
-                // 5. Balance Check
                 if (user.Balance < totalCost)
                 {
                     return Response<bool>.Error($"Insufficient balance. You need {totalCost} Birr but have {user.Balance} Birr.");
                 }
 
-                // 6. Validate Cards Availability
-                var alreadyTakenCards = await _repository.GetTakenCards(request.RoomId, cancellationToken);
-                foreach (var cardId in request.MasterCardIds)
+                // 5. ATOMIC PURCHASE TRANSACTION: Ensure the user actually holds valid reservations
+                bool purchased = await _repository.PurchaseReservedCardsAsync(request.UserId, request.RoomId, request.MasterCardIds);
+                if (!purchased)
                 {
-                    if (alreadyTakenCards.Contains(cardId))
-                    {
-                        // Double check if *this* user already owns them (idempotency/retry)
-                        // But for simplicity, we assume if it's taken, you can't buy it unless we handle re-purchase logic.
-                        // We'll trust GetTakenCards returns all active cards in the room.
-                        return Response<bool>.Error($"Card {cardId} is already taken by another player.");
-                    }
-                }
-                // Check if user already has cards in this room? Max 2 total?
-                var myCards = await _repository.FindAsync<Card>(c => c.RoomId == request.RoomId && c.UserId == request.UserId);
-                var cardList = myCards.ToList();
-                if (cardList.Count + request.MasterCardIds.Count > 2)
-                {
-                    return Response<bool>.Error($"You can only hold a maximum of 2 cards. You already have {cardList.Count}.");
+                    return Response<bool>.Error("Purchase failed. Your reservations may have expired or you did not select these cards.");
                 }
 
-
-                // 7. Deduct Balance
+                // 6. Deduct Balance ONLY if the purchase succeeded
                 user.Balance -= totalCost;
                 user.UpdatedAt = DateTime.UtcNow;
-                await _repository.UpdateAsync(user); 
-                // Note: Assuming generic repository Update marks state as Modified. 
-                // Actual save happens at savechanges, but good to be explicit if needed.
+                await _repository.UpdateAsync(user);
 
-                // 8. Create Cards
-                foreach (var masterCardId in request.MasterCardIds)
-                {
-                    var newCard = new Card
-                    {
-                        UserId = request.UserId,
-                        RoomId = request.RoomId,
-                        MasterCardId = masterCardId,
-                        PurchasedAt = DateTime.UtcNow
-                    };
-                    await _repository.AddAsync(newCard);
-                }
-
-                // 9. Mark Player as Ready?
-                // Depending on game flow, buying cards might mean you are ready.
+                // 7. Mark Player as Ready
                 var roomPlayer = await _repository.FindOneAsync<RoomPlayer>(rp => rp.RoomId == request.RoomId && rp.UserId == request.UserId);
                 if (roomPlayer != null)
                 {
                     roomPlayer.IsReady = true;
-                    // roomPlayer.CardCount += ... if we tracked that on RoomPlayer, but we use Cards table
-                     await _repository.UpdateAsync(roomPlayer);
+                    await _repository.UpdateAsync(roomPlayer);
                 }
 
                 await _repository.SaveChanges();
                 
-                // Broadcast room stats update
+                // 8. Broadcast room stats & specific card purchases
                 var playerCount = await _repository.CountAsync<RoomPlayer>(rp => rp.RoomId == request.RoomId);
-                var cardCount = await _repository.CountAsync<Card>(c => c.RoomId == request.RoomId);
+                
+                // Count active/purchased cards for the prize pool
+                var cardCount = await _repository.CountAsync<Card>(c => 
+                    c.RoomId == request.RoomId && c.State == CardLockState.Purchased);
+                    
                 var prizePool = cardCount * room.CardPrice * 0.87m;
                 
                 await _hubContext.Clients.Group(request.RoomId.ToString())
-                    .SendAsync("RoomStatsUpdated", request.RoomId, playerCount, prizePool);
+                    .SendAsync("RoomStatsUpdated", request.RoomId, playerCount, prizePool, cancellationToken: cancellationToken);
+
+                // Tell everyone else the cards are officially bought
+                foreach (var masterCardId in request.MasterCardIds)
+                {
+                    await _hubContext.Clients.Group(request.RoomId.ToString())
+                        .SendAsync("CardSelectionChanged", masterCardId, true, request.UserId, cancellationToken: cancellationToken);
+                }
 
                 return Response<bool>.Success(true);
             }
             catch (Exception ex)
             {
                 // Log exception
-                return Response<bool>.Error($"Purchase failed: {ex.Message}");
-            }
-            finally
-            {
-                _semaphore.Release();
+                return Response<bool>.Error($"Purchase failed due to an internal error.");
             }
         }
     }

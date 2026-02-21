@@ -200,18 +200,25 @@ public class BotPlayerService
 
                 try
                 {
-                    await _repository.PickMasterCardAsync(bot.UserId, roomId, selectedCardId);
+                    // Bots bypass preview window and go straight to purchase.
+                    // But to respect atomic architecture, reserve it then purchase it immediately
+                    bool reserved = await _repository.ReserveCardAsync(bot.UserId, roomId, selectedCardId);
                     
-                    // Broadcast SignalR update so lobby shows card as taken
-                    await _hubContext.Clients.Group(roomId.ToString())
-                        .SendAsync("CardSelectionChanged", selectedCardId, true, bot.UserId);
-                    
-                    _logger.LogInformation("Bot {BotUsername} selected card {CardId} in room {RoomId}", 
-                        bot.Username, selectedCardId, roomId);
+                    if (reserved)
+                    {
+                         await _repository.PurchaseReservedCardsAsync(bot.UserId, roomId, new List<int> { selectedCardId });
+
+                        // Broadcast SignalR update so lobby shows card as taken
+                        await _hubContext.Clients.Group(roomId.ToString())
+                            .SendAsync("CardSelectionChanged", selectedCardId, true, bot.UserId);
+                        
+                        _logger.LogInformation("Bot {BotUsername} selected and purchased card {CardId} in room {RoomId}", 
+                            bot.Username, selectedCardId, roomId);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to select card {CardId} for bot {BotId} in room {RoomId}",
+                    _logger.LogError(ex, "Failed to select/purchase card {CardId} for bot {BotId} in room {RoomId}",
                         selectedCardId, bot.UserId, roomId);
                 }
             }
@@ -336,7 +343,11 @@ public class BotPlayerService
                 // Purchase the card for the bot
                 try
                 {
-                    await _repository.PickMasterCardAsync(botPlayer.UserId, roomId, selectedCardId);
+                    bool reserved = await _repository.ReserveCardAsync(botPlayer.UserId, roomId, selectedCardId);
+                    if (reserved)
+                    {
+                        await _repository.PurchaseReservedCardsAsync(botPlayer.UserId, roomId, new List<int> { selectedCardId });
+                    }
                 }
                 catch (Exception ex)
                 {
