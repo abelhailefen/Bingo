@@ -26,7 +26,6 @@ namespace Bingo.Core.Entities
         // --- NEW PROPERTIES FOR LOCKING ---
         public CardLockState State { get; set; } 
         public DateTime? ReservationExpiresAt { get; set; } 
-        public byte[] RowVersion { get; set; } = Array.Empty<byte>();
     }
 }
 

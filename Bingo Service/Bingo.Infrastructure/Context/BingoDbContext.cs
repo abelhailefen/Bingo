@@ -263,8 +263,8 @@ public class BingoDbContext : DbContext
             entity.Property(e => e.ReservationExpiresAt)
                 .HasColumnName("reservation_expires_at");
 
-            entity.Property(e => e.RowVersion)
-                .HasColumnName("row_version")
+            // PostgreSQL intrinsic concurrency token (mapped to xmin system column automatically by Npgsql when uint is used)
+            entity.Property<uint>("Version")
                 .IsRowVersion();
 
             entity.HasIndex(e => new { e.RoomId, e.UserId, e.MasterCardId })
