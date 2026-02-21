@@ -154,8 +154,9 @@ public class RoomManagerService : BackgroundService
                 requiredBotCount = botService.GetRequiredBotCount(realPlayerCount, room.CardPrice);
                 if (requiredBotCount <= 0) return;
 
-                // Calculate timing
-                intervalMs = Math.Max(500, (countdownSeconds * 1000) / requiredBotCount);
+                // Calculate timing: Target finishing 5 seconds early
+                var targetSeconds = Math.Max(1, countdownSeconds - 5);
+                intervalMs = Math.Max(200, (targetSeconds * 1000) / requiredBotCount);
 
                 _logger.LogInformation(
                     "Room {RoomId}: Planning {BotCount} bots over {Countdown}s (Interval: {Interval}ms)",
