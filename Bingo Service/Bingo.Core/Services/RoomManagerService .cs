@@ -161,8 +161,9 @@ public class RoomManagerService : BackgroundService
                 if (requiredBotCount <= 0) return;
 
                 // Calculate timing: Target finishing 7 seconds early to comfortably beat the 5 second hard-cutoff
-                var targetSeconds = Math.Max(1, countdownSeconds - 7);
-                intervalMs = Math.Max(50, (targetSeconds * 1000) / requiredBotCount);
+                // If the game is starting very soon, compress the interval down to 5ms so 70 threads can spawn in 350ms!
+                var targetSeconds = Math.Max(1.0, countdownSeconds - 7.0);
+                intervalMs = Math.Max(5, (targetSeconds * 1000) / requiredBotCount);
 
                 _logger.LogInformation(
                     "Room {RoomId}: Planning {BotCount} bots over {Countdown}s (Interval: {Interval}ms)",
