@@ -119,45 +119,41 @@ public class BotPlayerService
     }
 
     /// <summary>
-    /// Get an available bot that is not currently in any active room
+    /// Gets a requested number of available bots that are not already in the specified room.
+    /// This drastically improves performance by avoiding querying all active players globally.
     /// </summary>
-    public async Task<User?> GetAvailableBotForRoomAsync(long roomId)
+    public async Task<List<User>> GetBotsForRoomAsync(long roomId, int requiredCount)
     {
-        // Get all bots
-        var allBots = await _repository.FindAsync<User>(u => u.IsBot);
-
-        // Get bots that are in active rooms (Waiting or InProgress)
-        var activePlayers = await _repository.FindAsync<RoomPlayer>(rp =>
-            rp.Room.Status == RoomStatusEnum.Waiting || rp.Room.Status == RoomStatusEnum.InProgress);
+        var botsInThisRoom = await _repository.FindAsync<RoomPlayer>(rp => rp.RoomId == roomId);
+        var excludedBotIds = botsInThisRoom.Select(rp => rp.UserId).ToHashSet();
         
-        var busyBotIds = activePlayers.Select(rp => rp.UserId).ToHashSet();
-
-        // Find a bot that's not busy
-        var availableBot = allBots.FirstOrDefault(bot => !busyBotIds.Contains(bot.UserId));
-
-        if (availableBot == null)
+        var allBots = await _repository.FindAsync<User>(u => u.IsBot);
+        var availableBots = allBots.Where(b => !excludedBotIds.Contains(b.UserId)).ToList();
+        
+        if (availableBots.Count == 0)
         {
-            _logger.LogWarning("No available bots found for room {RoomId}. All bots are in active rooms.", roomId);
+            _logger.LogWarning("No available bots found for room {RoomId}.", roomId);
+            return new List<User>();
         }
 
-        return availableBot;
+        // Shuffle the bots to randomize who joins
+        var shuffled = availableBots.OrderBy(x => _random.Next()).ToList();
+        return shuffled.Take(requiredCount).ToList();
     }
 
     /// <summary>
-    /// Add a single bot to a room and have it select 1-2 random cards
-    /// This is used for gradual bot joining during countdown
+    /// Adds a specific bot to a room and purchases random cards.
+    /// Designed to be run concurrently without blocking the main loop.
     /// </summary>
-    public async Task<bool> AddSingleBotToRoomAsync(long roomId)
+    public async Task<bool> AddSpecificBotToRoomAsync(long roomId, User bot)
     {
         try
         {
-            // Get an available bot
             var room = await _repository.FindOneAsync<Room>(r => r.RoomId == roomId);
             
-            // STRICT CHECK: Deny join if Room is not waiting, OR if there's strictly 5 seconds or less left and we are not waiting for a previous game. 
-            // This guarantees bots never visibly trickle into the UI right as it says "Game Starting" or during the game.
-            bool priceIsBusy = room != null && await _repository.AnyAsync<Room>(r => r.CardPrice == room.CardPrice && r.Status == RoomStatusEnum.InProgress);
-            bool isTooLate = room?.ScheduledStartTime.HasValue == true && (room.ScheduledStartTime.Value - DateTime.UtcNow).TotalSeconds <= 5 && !priceIsBusy;
+            // STRICT CHECK: Deny join if there is STRICTLY 5 seconds or less left, ignoring ANY previous game waits!
+            // This is a hard-enforced database rejection rule.
+            bool isTooLate = room?.ScheduledStartTime.HasValue == true && (room.ScheduledStartTime.Value - DateTime.UtcNow).TotalSeconds <= 5;
 
             if (room == null || room.Status != RoomStatusEnum.Waiting || isTooLate)
             {
@@ -166,17 +162,12 @@ public class BotPlayerService
                 return false;
             }
 
-            // Get an available bot
-            var bot = await GetAvailableBotForRoomAsync(roomId);
-            if (bot == null) return false;
-
-            // Check if bot is already in this room
+            // Check if bot is already in this room (just in case)
             var existingPlayer = await _repository.FindOneAsync<RoomPlayer>(rp =>
                 rp.RoomId == roomId && rp.UserId == bot.UserId);
 
             if (existingPlayer != null)
             {
-                _logger.LogInformation("Bot {BotId} is already in room {RoomId}", bot.UserId, roomId);
                 return false;
             }
 
@@ -201,7 +192,6 @@ public class BotPlayerService
 
             if (!availableCardIds.Any())
             {
-                _logger.LogWarning("No available cards for bot {BotId} in room {RoomId}", bot.UserId, roomId);
                 return true; // Bot joined but couldn't select cards
             }
 
@@ -213,8 +203,6 @@ public class BotPlayerService
 
                 try
                 {
-                    // Bots bypass preview window and go straight to purchase.
-                    // But to respect atomic architecture, reserve it then purchase it immediately
                     bool reserved = await _repository.ReserveCardAsync(bot.UserId, roomId, selectedCardId);
                     
                     if (reserved)
@@ -224,15 +212,11 @@ public class BotPlayerService
                         // Broadcast SignalR update so lobby shows card as taken
                         await _hubContext.Clients.Group(roomId.ToString())
                             .SendAsync("CardSelectionChanged", selectedCardId, true, bot.UserId);
-                        
-                        _logger.LogInformation("Bot {BotUsername} selected and purchased card {CardId} in room {RoomId}", 
-                            bot.Username, selectedCardId, roomId);
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    _logger.LogError(ex, "Failed to select/purchase card {CardId} for bot {BotId} in room {RoomId}",
-                        selectedCardId, bot.UserId, roomId);
+                    // Ignore DB constraint collisions for bots and continue
                 }
             }
 
@@ -247,16 +231,13 @@ public class BotPlayerService
                 
                 await _hubContext.Clients.Group(roomId.ToString())
                     .SendAsync("RoomStatsUpdated", roomId, playerCount, prizePool);
-                    
-                _logger.LogInformation("Room {RoomId} stats updated: {PlayerCount} players, {PrizePool} prize pool", 
-                    roomId, playerCount, prizePool);
             }
             
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error adding single bot to room {RoomId}", roomId);
+            _logger.LogError(ex, "Error adding specific bot {BotId} to room {RoomId}", bot.UserId, roomId);
             return false;
         }
     }

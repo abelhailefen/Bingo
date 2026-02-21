@@ -127,6 +127,7 @@ public class RoomManagerService : BackgroundService
         {
             int requiredBotCount = 0;
             double intervalMs = 1000;
+            List<User> assignedBots = new List<User>();
 
             // --- STEP 1: INITIAL CALCULATION ---
             // Use a temporary scope just to calculate how many bots we need
@@ -154,6 +155,11 @@ public class RoomManagerService : BackgroundService
                 requiredBotCount = botService.GetRequiredBotCount(realPlayerCount, room.CardPrice);
                 if (requiredBotCount <= 0) return;
 
+                // Pre-allocate all random bot queries upfront to avoid repeated Db queries!
+                assignedBots = await botService.GetBotsForRoomAsync(roomId, requiredBotCount);
+                requiredBotCount = assignedBots.Count;
+                if (requiredBotCount <= 0) return;
+
                 // Calculate timing: Target finishing 7 seconds early to comfortably beat the 5 second hard-cutoff
                 var targetSeconds = Math.Max(1, countdownSeconds - 7);
                 intervalMs = Math.Max(50, (targetSeconds * 1000) / requiredBotCount);
@@ -164,41 +170,41 @@ public class RoomManagerService : BackgroundService
             }
 
             // --- STEP 2: THE JOINING LOOP ---
-            for (int i = 0; i < requiredBotCount; i++)
+            for (int i = 0; i < assignedBots.Count; i++)
             {
                 // Exit if the cancellation token is triggered (Game started)
                 if (ct.IsCancellationRequested)
                     break;
 
-                // CRITICAL: Create a NEW scope for every single bot join attempt.
-                // This forces EF Core to bypass its internal cache and check the real DB status.
-                using (var loopScope = _serviceProvider.CreateScope())
+                var currentBot = assignedBots[i];
+
+                // Fire and forget the bot joining query in a separate background thread!
+                // This guarantees the 'intervalMs' spacing is rigidly adhered to visually,
+                // completely immune to PostgreSQL EF Core latency holding up the loop.
+                _ = Task.Run(async () =>
                 {
-                    var repo = loopScope.ServiceProvider.GetRequiredService<IBingoRepository>();
-                    var botService = loopScope.ServiceProvider.GetRequiredService<BotPlayerService>();
-
-                    // Fetch fresh room status from the database
-                    var currentRoom = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
-
-                    // If the room moved to InProgress or was deleted, STOP immediately.
-                    if (currentRoom == null || currentRoom.Status != RoomStatusEnum.Waiting)
+                    try
                     {
-                        _logger.LogInformation("Room {RoomId} status changed to {Status}. Stopping bot joins.",
-                            roomId, currentRoom?.Status.ToString() ?? "Deleted");
-                        break;
-                    }
+                        using var loopScope = _serviceProvider.CreateScope();
+                        var repo = loopScope.ServiceProvider.GetRequiredService<IBingoRepository>();
+                        var botService = loopScope.ServiceProvider.GetRequiredService<BotPlayerService>();
 
-                    // Add the bot
-                    var success = await botService.AddSingleBotToRoomAsync(roomId);
-                    if (!success)
+                        // Fetch fresh room status from the database
+                        var currentRoom = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
+                        if (currentRoom == null || currentRoom.Status != RoomStatusEnum.Waiting)
+                            return;
+
+                        // Add the specific pre-allocated bot efficiently
+                        await botService.AddSpecificBotToRoomAsync(roomId, currentBot);
+                    }
+                    catch (Exception ex)
                     {
-                        _logger.LogWarning("Failed to add bot {Index}/{Total} to room {RoomId}",
-                            i + 1, requiredBotCount, roomId);
+                        _logger.LogError(ex, "Background bot {BotId} spawn failed for room {RoomId}", currentBot.UserId, roomId);
                     }
-                }
+                }, ct);
 
-                // Wait before adding the next bot
-                if (i < requiredBotCount - 1)
+                // Wait exactly the interval length before spacing out the next bot
+                if (i < assignedBots.Count - 1)
                 {
                     await Task.Delay((int)intervalMs, ct);
                 }
