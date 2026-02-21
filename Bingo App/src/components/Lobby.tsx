@@ -30,7 +30,7 @@ interface LobbyProps {
 }
 
 export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const dispatch = useDispatch<AppDispatch>();
 
     const connectionRef = useRef<signalR.HubConnection | null>(null);
@@ -240,6 +240,8 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
                      if (res.data) {
                          setPreviewCards(prev => ({ ...prev, [cardId]: res.data }));
                      }
+                 }).catch(() => {
+                     // Silently handle getMasterCard fetch failures during race conditions
                  });
             }
         }
@@ -445,17 +447,25 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             </div>
 
             {/* Actions */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 grid grid-cols-2 gap-4 bg-[#0f172a]/95 backdrop-blur-md border-t border-white/10 z-50">
+            <div className="fixed bottom-0 left-0 right-0 p-4 grid grid-cols-[1fr_auto_1.5fr] gap-3 bg-[#0f172a]/95 backdrop-blur-md border-t border-white/10 z-50">
                 <button
                     onClick={onBack}
-                    className="bg-slate-800 text-white py-4 rounded-2xl font-black text-sm uppercase"
+                    className="bg-slate-800 hover:bg-slate-700 text-white py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-xs md:text-sm uppercase transition-colors"
                 >
                     {t('LEAVE')}
+                </button>
+                <button 
+                    onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en')}
+                    className="flex items-center justify-center bg-indigo-900/50 hover:bg-indigo-800 border border-indigo-500/30 px-4 rounded-xl md:rounded-2xl transition-colors"
+                >
+                    <span className="text-indigo-200 font-black text-xs">
+                        🌍 {i18n.language === 'en' ? 'EN' : 'AM'}
+                    </span>
                 </button>
                 <button
                     disabled={countdown <= 1 || selectedIds.length === 0 || isProcessing}
                     onClick={handleConfirmJoin}
-                    className={`py-4 rounded-2xl font-black text-sm uppercase shadow-lg transition-all ${selectedIds.length === 0 || countdown <= 1 || isProcessing ? 'bg-indigo-900/50 text-indigo-400/50 grayscale' : 'bg-gradient-to-r from-orange-500 to-red-500 text-white active:scale-95'}`}
+                    className={`py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-xs md:text-sm uppercase shadow-lg transition-all ${selectedIds.length === 0 || countdown <= 1 || isProcessing ? 'bg-indigo-900/50 text-indigo-400/50 grayscale' : 'bg-gradient-to-r from-orange-500 to-red-500 text-white active:scale-95'}`}
                 >
                     {isProcessing ? t('PROCESSING') : `${t('BUY CARDS')} (${selectedIds.length})`}
                 </button>

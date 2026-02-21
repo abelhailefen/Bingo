@@ -16,7 +16,7 @@ interface GameRoomProps {
 }
 
 export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const dispatch = useDispatch<AppDispatch>();
 
     // --- STATE ---
@@ -505,12 +505,20 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
 
             {/* BOTTOM CONTROLS */}
             <div className="p-3 bg-[#0f172a] border-t border-white/10 space-y-3 shrink-0 z-50">
-                <div className="flex justify-start">
-                    <button onClick={() => setIsAutoMode(!isAutoMode)} className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all ${isAutoMode ? 'bg-green-950/30 border-green-500/50' : 'bg-slate-800 border-transparent'}`}>
+                <div className="flex justify-between items-center">
+                    <button onClick={() => setIsAutoMode(!isAutoMode)} className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${isAutoMode ? 'bg-green-950/30 border-green-500/50' : 'bg-slate-800 border-transparent'}`}>
                         <span className={`text-[10px] font-bold uppercase ${isAutoMode ? 'text-green-400' : 'text-slate-300'}`}>{t('Auto-Mark')} {isAutoMode ? t('ON') : t('OFF')}</span>
                         <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors ${isAutoMode ? 'bg-green-600' : 'bg-slate-600'}`}>
                             <span className={`inline-block h-2 w-2 transform rounded-full bg-white transition-transform ${isAutoMode ? 'translate-x-5' : 'translate-x-1'}`} />
                         </div>
+                    </button>
+                    <button 
+                        onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en')}
+                        className="flex items-center justify-center bg-indigo-900/40 hover:bg-indigo-800 border border-indigo-500/30 px-3 py-2 rounded-xl transition-colors"
+                    >
+                        <span className="text-indigo-200 font-black text-[10px] uppercase">
+                            🌍 {i18n.language === 'en' ? 'EN' : 'AM'}
+                        </span>
                     </button>
                 </div>
 

@@ -12,7 +12,7 @@ interface WagerSelectionProps {
  * Allows users to choose their wager amount (5, 10, 20, or 50 birr)
  */
 export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [selectedWager, setSelectedWager] = useState<number | null>(null);
     const [balance, setBalance] = useState<number | null>(null);
     const wagerOptions = [5, 10, 20, 50];
@@ -39,7 +39,20 @@ export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps)
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4 relative">
+            {/* Language Toggle */}
+            <div className="absolute top-4 right-4">
+                <button 
+                    onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en')}
+                    className="flex items-center gap-1 bg-slate-800/80 hover:bg-slate-700 backdrop-blur-md border border-slate-600 px-3 py-1.5 text-xs font-bold rounded-full transition-colors"
+                >
+                    <span className="text-slate-400">🌍</span>
+                    <span className="text-white uppercase">
+                        {i18n.language === 'en' ? 'EN' : 'AM'}
+                    </span>
+                </button>
+            </div>
+
             <div className="max-w-md w-full">
                 {/* Header */}
                 <div className="text-center mb-8">
