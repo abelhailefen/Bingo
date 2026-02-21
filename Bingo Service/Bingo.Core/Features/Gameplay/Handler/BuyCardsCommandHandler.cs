@@ -49,12 +49,12 @@ public class BuyCardsCommandHandler : IRequestHandler<BuyCardsCommand, Response<
         }
         else
         {
-            // Pick random IDs from 1-100 that the user doesn't already have
+            // Pick random IDs from 1-200 that the user doesn't already have
             var existingTemplateIds = existingCards.Select(c => (int)c.MasterCardId).ToHashSet();
             var rng = new Random();
             while (idsToAssign.Count < request.Quantity)
             {
-                int randomId = rng.Next(1, 101); // 1 to 100
+                int randomId = rng.Next(1, 201); // 1 to 200
                 if (!existingTemplateIds.Contains(randomId) && !idsToAssign.Contains(randomId))
                 {
                     idsToAssign.Add(randomId);

@@ -362,13 +362,21 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
 
             {/* Selection UI */}
             <div className="flex-1 p-4 overflow-y-auto">
-                <div className="flex justify-center gap-2 mb-4">
+                <div className="flex items-center justify-center gap-2 mb-4">
                     {[0, 1].map(p => (
                         <button key={p} onClick={() => setCardPage(p)}
                             className={`px-6 py-2 rounded-full text-[10px] font-black transition-all ${cardPage === p ? 'bg-orange-500 text-white shadow-lg' : 'bg-indigo-950 text-indigo-400 border border-white/10'}`}>
                             {p === 0 ? '1 - 100' : '101 - 200'}
                         </button>
                     ))}
+                    <button 
+                        onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en')}
+                        className="flex items-center justify-center bg-indigo-900/50 hover:bg-indigo-800 border border-indigo-500/30 h-8 px-4 rounded-full transition-colors ml-1 shadow-[0_0_15px_rgba(79,70,229,0.2)]"
+                    >
+                        <span className="text-indigo-200 font-black text-[11px] uppercase tracking-wide">
+                            🌍 {i18n.language === 'en' ? 'EN' : 'AM'}
+                        </span>
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-10 gap-1.5 max-w-sm mx-auto mb-8 bg-indigo-950/30 p-2 rounded-xl border border-white/5">
@@ -447,20 +455,12 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
             </div>
 
             {/* Actions */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 grid grid-cols-[1fr_auto_1.5fr] gap-3 bg-[#0f172a]/95 backdrop-blur-md border-t border-white/10 z-50">
+            <div className="fixed bottom-0 left-0 right-0 p-4 grid grid-cols-2 gap-4 bg-[#0f172a]/95 backdrop-blur-md border-t border-white/10 z-50">
                 <button
                     onClick={onBack}
                     className="bg-slate-800 hover:bg-slate-700 text-white py-3 md:py-4 rounded-xl md:rounded-2xl font-black text-xs md:text-sm uppercase transition-colors"
                 >
                     {t('LEAVE')}
-                </button>
-                <button 
-                    onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en')}
-                    className="flex items-center justify-center bg-indigo-900/50 hover:bg-indigo-800 border border-indigo-500/30 px-4 rounded-xl md:rounded-2xl transition-colors"
-                >
-                    <span className="text-indigo-200 font-black text-xs">
-                        🌍 {i18n.language === 'en' ? 'EN' : 'AM'}
-                    </span>
                 </button>
                 <button
                     disabled={countdown <= 1 || selectedIds.length === 0 || isProcessing}

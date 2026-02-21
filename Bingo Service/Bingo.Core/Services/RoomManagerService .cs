@@ -141,6 +141,7 @@ public class RoomManagerService : BackgroundService
                     return;
 
                 var countdownSeconds = (room.ScheduledStartTime.Value - DateTime.UtcNow).TotalSeconds;
+                countdownSeconds = countdownSeconds - 10;
                 if (countdownSeconds <= 0) return;
 
                 // Count real players (non-bots)

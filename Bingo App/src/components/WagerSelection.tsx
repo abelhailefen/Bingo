@@ -40,20 +40,7 @@ export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps)
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4 relative">
-            {/* Language Toggle */}
-            <div className="absolute top-4 right-4">
-                <button 
-                    onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en')}
-                    className="flex items-center gap-1 bg-slate-800/80 hover:bg-slate-700 backdrop-blur-md border border-slate-600 px-3 py-1.5 text-xs font-bold rounded-full transition-colors"
-                >
-                    <span className="text-slate-400">🌍</span>
-                    <span className="text-white uppercase">
-                        {i18n.language === 'en' ? 'EN' : 'AM'}
-                    </span>
-                </button>
-            </div>
-
-            <div className="max-w-md w-full">
+            <div className="max-w-md w-full mt-10">
                 {/* Header */}
                 <div className="text-center mb-8">
                     <h1 className="text-4xl font-bold text-white mb-2">
@@ -62,12 +49,21 @@ export const WagerSelection = ({ userId, onWagerSelected }: WagerSelectionProps)
                     <p className="text-gray-300">
                         {t('Select how much birr you want to wager for this game')}
                     </p>
-                    {balance !== null && (
-                        <div className="mt-4 inline-block bg-slate-800/50 px-4 py-2 rounded-full border border-green-500/30">
-                            <span className="text-gray-400 text-sm">{t('Your Balance:')} </span>
-                            <span className="text-green-400 font-bold">{balance} {t('ETB')}</span>
-                        </div>
-                    )}
+                    <div className="mt-4 flex flex-row items-center justify-center gap-3">
+                        {balance !== null && (
+                            <div className="inline-block bg-slate-800/50 px-4 py-2 border border-green-500/30 rounded-full">
+                                <span className="text-gray-400 text-sm tracking-wide">{t('Your Balance:')} </span>
+                                <span className="text-green-400 font-bold">{balance} {t('ETB')}</span>
+                            </div>
+                        )}
+                        <button 
+                            onClick={() => i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en')}
+                            className="flex items-center gap-1.5 bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/50 px-3 py-2 text-xs font-black rounded-full transition-all text-white uppercase shadow-lg shadow-indigo-500/20"
+                        >
+                            <span className="text-indigo-300 text-[14px]">🌍</span>
+                            {i18n.language === 'en' ? 'EN' : 'AM'}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Wager Options Grid */}

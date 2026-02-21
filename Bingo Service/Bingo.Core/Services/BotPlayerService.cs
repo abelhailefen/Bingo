@@ -186,7 +186,7 @@ public class BotPlayerService
             // Purchase 1-2 random cards for the bot
             int cardsToSelect = _random.Next(1, 3); // 1 or 2 cards
             var takenCardIds = await _repository.GetTakenCards(roomId, CancellationToken.None);
-            var availableCardIds = Enumerable.Range(1, 100)
+            var availableCardIds = Enumerable.Range(1, 200)
                 .Except(takenCardIds.Select(id => (int)id))
                 .ToList();
 
@@ -312,7 +312,7 @@ public class BotPlayerService
 
         // Get already taken card IDs
         var takenCardIds = await _repository.GetTakenCards(roomId, CancellationToken.None);
-        var availableCardIds = Enumerable.Range(1, 100)
+        var availableCardIds = Enumerable.Range(1, 200)
             .Except(takenCardIds.Select(id => (int)id))
             .ToList();
 

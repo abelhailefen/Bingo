@@ -71,7 +71,7 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                     Pattern = WinPatternEnum.Line,
                     CreatedAt = DateTime.UtcNow,
                     // Default 30 seconds countdown (will be extended if blocked by another game)
-                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(30)
+                    ScheduledStartTime = DateTime.UtcNow.AddSeconds(40)
                 };
                 await _repository.AddAsync(room);
                 await _repository.SaveChanges();
