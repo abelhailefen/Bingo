@@ -147,9 +147,15 @@ public class BotPlayerService
         {
             // Get an available bot
             var room = await _repository.FindOneAsync<Room>(r => r.RoomId == roomId);
-            if (room == null || room.Status != RoomStatusEnum.Waiting)
+            
+            // STRICT CHECK: Deny join if Room is not waiting, OR if the Countdown has hit zero. 
+            // This prevents bots from sneaking in during the background service's async Thread Context Switch delay.
+            bool isCountdownCompleted = room?.ScheduledStartTime.HasValue == true && room.ScheduledStartTime.Value <= DateTime.UtcNow;
+
+            if (room == null || room.Status != RoomStatusEnum.Waiting || isCountdownCompleted)
             {
-                _logger.LogWarning("Blocking bot join: Room {RoomId} is either null or already InProgress.", roomId);
+                _logger.LogWarning("Blocking bot join: Room {RoomId} is starting/InProgress. State: {State}, TimePassed: {Pass}", 
+                                   roomId, room?.Status.ToString(), isCountdownCompleted);
                 return false;
             }
 

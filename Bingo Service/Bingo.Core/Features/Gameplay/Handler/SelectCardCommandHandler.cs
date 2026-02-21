@@ -42,6 +42,13 @@ namespace Bingo.Core.Features.Gameplay.Handler
                 if (activeUserCards.Count >= 2)
                     return Response<bool>.Error("You can only choose a maximum of 2 cards.");
 
+                // STRICT DATE CHECK: If the room is already starting, block new reservations
+                var room = await _repository.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
+                if (room == null || room.Status != RoomStatusEnum.Waiting || (room.ScheduledStartTime.HasValue && room.ScheduledStartTime.Value <= DateTime.UtcNow))
+                {
+                    return Response<bool>.Error("Game has started! No new cards can be selected.");
+                }
+
                 // 2. Atomically attempt to reserve
                 bool reserved = await _repository.ReserveCardAsync(request.UserId, request.RoomId, request.MasterCardId);
                 

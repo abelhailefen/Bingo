@@ -38,11 +38,13 @@ namespace Bingo.Core.Features.Gameplay.Handler
                     return Response<bool>.Error("You must purchase 1 or 2 cards.");
                 }
 
-                // 2. Load Room and Validate Status
+                // 2. Load Room and Validate Status explicitly against the ScheduledStartTime
                 var room = await _repository.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
-                if (room == null || room.Status != RoomStatusEnum.Waiting)
+                bool isStarting = room != null && room.ScheduledStartTime.HasValue && room.ScheduledStartTime.Value <= DateTime.UtcNow;
+
+                if (room == null || room.Status != RoomStatusEnum.Waiting || isStarting)
                 {
-                    return Response<bool>.Error("Room is not available for joining.");
+                    return Response<bool>.Error("Room is starting or no longer available for purchasing cards.");
                 }
 
                 // 3. Load User
