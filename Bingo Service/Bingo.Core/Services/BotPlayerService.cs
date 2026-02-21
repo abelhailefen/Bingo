@@ -42,10 +42,16 @@ public class BotPlayerService
     }
 
     /// <summary>
-    /// Calculate how many bots are needed based on real player count
+    /// Calculate how many bots are needed based on real player count and room price
     /// </summary>
-    public int GetRequiredBotCount(int realPlayerCount)
+    public int GetRequiredBotCount(int realPlayerCount, decimal cardPrice)
     {
+        // Explicitly enforce exactly 70 bots for the 5 and 10 ETB rooms
+        if (cardPrice == 5m || cardPrice == 10m)
+        {
+            return Math.Max(0, 70 - realPlayerCount);
+        }
+
         return realPlayerCount switch
         {
             1 => 50,

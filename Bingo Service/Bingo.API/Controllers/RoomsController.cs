@@ -42,7 +42,7 @@ public class RoomsController : ControllerBase
     public async Task<ActionResult<Response<bool>>> LeaveRoom(long roomId, [FromBody] LeaveRoomRequest request)
     {
         // The handler now manages DB cleanup AND SignalR broadcasting
-        var result = await _mediator.Send(new LeaveLobbyCommand(roomId, request.UserId));
+        var result = await _mediator.Send(new LeaveRoomCommand(roomId, request.UserId));
         return Ok(result);
     }
     [HttpGet("{roomId}/users/{userId}/cards")]

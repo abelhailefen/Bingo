@@ -151,7 +151,7 @@ public class RoomManagerService : BackgroundService
                     if (user != null && !user.IsBot) realPlayerCount++;
                 }
 
-                requiredBotCount = botService.GetRequiredBotCount(realPlayerCount);
+                requiredBotCount = botService.GetRequiredBotCount(realPlayerCount, room.CardPrice);
                 if (requiredBotCount <= 0) return;
 
                 // Calculate timing
