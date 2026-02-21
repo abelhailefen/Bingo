@@ -172,43 +172,43 @@ public class RoomManagerService : BackgroundService
             }
 
             // --- STEP 2: THE JOINING LOOP ---
-            for (int i = 0; i < assignedBots.Count; i++)
+            // We use a single scope sequentially so we don't bombard PostgreSQL with 70 parallel DB connection threads!
+            // If the database takes time to process, it just naturally slows down the visual spawning rather than crashing the pool.
+            using (var loopScope = _serviceProvider.CreateScope())
             {
-                // Exit if the cancellation token is triggered (Game started)
-                if (ct.IsCancellationRequested)
-                    break;
+                var botService = loopScope.ServiceProvider.GetRequiredService<BotPlayerService>();
+                var repo = loopScope.ServiceProvider.GetRequiredService<IBingoRepository>();
 
-                var currentBot = assignedBots[i];
-
-                // Fire and forget the bot joining query in a separate background thread!
-                // This guarantees the 'intervalMs' spacing is rigidly adhered to visually,
-                // completely immune to PostgreSQL EF Core latency holding up the loop.
-                _ = Task.Run(async () =>
+                for (int i = 0; i < assignedBots.Count; i++)
                 {
+                    // Exit if the cancellation token is triggered (Game started)
+                    if (ct.IsCancellationRequested)
+                        break;
+
+                    var currentBot = assignedBots[i];
+
                     try
                     {
-                        using var loopScope = _serviceProvider.CreateScope();
-                        var repo = loopScope.ServiceProvider.GetRequiredService<IBingoRepository>();
-                        var botService = loopScope.ServiceProvider.GetRequiredService<BotPlayerService>();
-
                         // Fetch fresh room status from the database
                         var currentRoom = await repo.FindOneAsync<Room>(r => r.RoomId == roomId);
                         if (currentRoom == null || currentRoom.Status != RoomStatusEnum.Waiting)
-                            return;
+                            break; // Stop immediately if game already started!
 
-                        // Add the specific pre-allocated bot efficiently
+                        // Await sequentially - this prevents the connection pool exhaustion deadlocks!
                         await botService.AddSpecificBotToRoomAsync(roomId, currentBot);
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Background bot {BotId} spawn failed for room {RoomId}", currentBot.UserId, roomId);
                     }
-                }, ct);
 
-                // Wait exactly the interval length before spacing out the next bot
-                if (i < assignedBots.Count - 1)
-                {
-                    await Task.Delay((int)intervalMs, ct);
+                    // Wait exactly the interval length before spacing out the next bot
+                    if (i < assignedBots.Count - 1)
+                    {
+                        int delay = (int)intervalMs;
+                        // Minimum 50ms delay to prevent completely slamming the CPU if interval calculated too small
+                        await Task.Delay(Math.Max(50, delay), ct);
+                    }
                 }
             }
 
