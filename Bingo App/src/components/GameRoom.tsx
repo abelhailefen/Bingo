@@ -2,7 +2,7 @@
 import { useDispatch } from 'react-redux';
 import * as signalR from '@microsoft/signalr';
 import Confetti from 'react-confetti';
-import { getRoom, getMyCards, claimBingo } from '../services/api';
+import { getRoom, getMyCards, claimBingo, leaveLobby } from '../services/api';
 import { resetLobby } from '../store/gameSlice';
 import { RoomStatus } from '../types/enums';
 import type { Room } from '../types/room';
@@ -116,6 +116,15 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             console.error("Bingo claim error", e);
         }
     }, [roomId, userId, canClaimBingo, isAutoMode]);
+
+    const handleLeave = async () => {
+        try {
+            await leaveLobby(roomId, userId);
+        } catch (e) {
+            console.error("Failed to leave lobby gracefully", e);
+        }
+        onLeave();
+    };
 
     const initGame = useCallback(async (isRefreshCall = false) => {
         if (isRefreshCall) setIsRefreshing(true);
@@ -387,7 +396,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                             <p className="text-slate-400 text-xs uppercase font-bold">Prize Pool</p>
                             <p className="text-3xl font-black text-green-400">{winner.prize} ETB</p>
                         </div>
-                        <button onClick={onLeave} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl">PLAY AGAIN</button>
+                        <button onClick={handleLeave} className="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-black rounded-xl">PLAY AGAIN</button>
                     </div>
                 </div>
             )}
@@ -399,7 +408,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                         <div className="text-6xl mb-4">⌛</div>
                         <h2 className="text-4xl font-black mb-2 italic text-white">GAME OVER</h2>
                         <p className="text-red-400 font-bold text-lg mb-6 uppercase tracking-wider">{gameOverMessage}</p>
-                        <button onClick={onLeave} className="w-full py-4 bg-slate-700 hover:bg-slate-600 text-white font-black rounded-xl">BACK TO WAGERS</button>
+                        <button onClick={handleLeave} className="w-full py-4 bg-slate-700 hover:bg-slate-600 text-white font-black rounded-xl">BACK TO WAGERS</button>
                     </div>
                 </div>
             )}
@@ -513,7 +522,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                     <button onClick={() => initGame(true)} disabled={isRefreshing} className="bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-300">
                         {isRefreshing ? 'Syncing...' : 'Sync Data'}
                     </button>
-                    <button onClick={onLeave} className="bg-red-950/30 border border-red-500/30 py-3 rounded-xl font-bold text-xs uppercase text-red-500">Back to Wagers</button>
+                    <button onClick={handleLeave} className="bg-red-950/30 border border-red-500/30 py-3 rounded-xl font-bold text-xs uppercase text-red-500">Back to Wagers</button>
                 </div>
             </div>
         </div>
