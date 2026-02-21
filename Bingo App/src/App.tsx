@@ -6,7 +6,7 @@ import { WagerSelection } from './components/WagerSelection';
 import { telegramInit } from './services/api';
 
 const App = () => {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     const [view, setView] = useState<'auth' | 'wager' | 'lobby' | 'game'>('auth');
     const [userId, setUserId] = useState<number | null>(null);
     const [, setAuthToken] = useState<string | null>(null);
@@ -164,25 +164,8 @@ const App = () => {
         setView('wager');
     };
 
-    const toggleLanguage = () => {
-        i18n.changeLanguage(i18n.language === 'en' ? 'am' : 'en');
-    };
-
     return (
         <div className="min-h-screen bg-slate-950 text-white font-sans relative">
-            {/* Language Toggle Button */}
-            <div className="absolute top-4 right-4 z-50">
-                <button 
-                    onClick={toggleLanguage}
-                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1.5 text-xs font-bold rounded-full transition-colors"
-                >
-                    <span className="text-slate-400">{t('Switch Language')}</span>
-                    <span className="text-white uppercase px-1.5 py-0.5 bg-indigo-600 rounded-md">
-                        {i18n.language === 'en' ? 'EN' : 'AM'}
-                    </span>
-                </button>
-            </div>
-
             {view === 'auth' && (
                 <div className="flex flex-col items-center justify-center min-h-screen">
                     <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
