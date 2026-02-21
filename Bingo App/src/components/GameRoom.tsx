@@ -27,6 +27,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
     const [gameOverMessage, setGameOverMessage] = useState<string | null>(null);
     const [timerSeconds, setTimerSeconds] = useState<number>(0);
     const [isCountingUp, setIsCountingUp] = useState<boolean>(false);
+    const [isWaitingForPreviousGame, setIsWaitingForPreviousGame] = useState<boolean>(false);
 
     const connectionRef = useRef<signalR.HubConnection | null>(null);
 
@@ -149,6 +150,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             connection.on("GameStarted", async (rId) => {
                 if (Number(rId) === roomId) {
                     setIsCountingUp(true);
+                    setIsWaitingForPreviousGame(false);
                     
                     // Forcefully upgrade the local UI state immediately, even if the HTTP fetch below fails
                     setRoomData(prev => prev ? { ...prev, status: RoomStatus.InProgress } : prev);
@@ -193,6 +195,11 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 setIsCountingUp(false);
             });
             
+            connection.on("WaitingForPreviousGame", (rId) => {
+                if (Number(rId) !== roomId) return;
+                setIsWaitingForPreviousGame(true);
+            });
+
             connection.on("RoomStatsUpdated", (rId, playerCount, prizePool) => {
                 if (Number(rId) !== roomId) return;
                 console.log(`Room stats updated: ${playerCount} players, ${prizePool} prize pool`);
@@ -440,7 +447,9 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                     <div className="bg-[#1e293b] rounded-xl p-4 flex items-center justify-between border border-indigo-500/20 shadow-xl shrink-0">
                         <div className="flex flex-col">
                             <span className="text-indigo-200 font-black uppercase text-[10px] tracking-widest">{isCountingUp ? 'Duration' : 'Starts In'}</span>
-                            <span className="text-xl font-mono font-bold text-indigo-400">{formatTime(timerSeconds)}</span>
+                            <span className="text-xl font-mono font-bold text-indigo-400">
+                                {isWaitingForPreviousGame ? 'Waiting...' : formatTime(timerSeconds)}
+                            </span>
                         </div>
                         <div className={`h-16 w-32 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${currentNumber ? 'bg-orange-600 border-white shadow-[0_0_20px_rgba(234,88,12,0.4)]' : 'bg-[#0f172a] border-indigo-500'}`}>
                             <span className="text-3xl font-black text-white">{currentNumber ? `${currentNumber.letter}-${currentNumber.val}` : '--'}</span>

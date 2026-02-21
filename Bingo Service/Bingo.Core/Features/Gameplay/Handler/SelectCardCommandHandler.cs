@@ -44,7 +44,9 @@ namespace Bingo.Core.Features.Gameplay.Handler
 
                 // STRICT DATE CHECK: If the room is already starting, block new reservations
                 var room = await _repository.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
-                if (room == null || room.Status != RoomStatusEnum.Waiting || (room.ScheduledStartTime.HasValue && room.ScheduledStartTime.Value <= DateTime.UtcNow))
+                bool priceIsBusy = room != null && await _repository.AnyAsync<Room>(r => r.CardPrice == room.CardPrice && r.Status == RoomStatusEnum.InProgress);
+
+                if (room == null || room.Status != RoomStatusEnum.Waiting || (room.ScheduledStartTime.HasValue && room.ScheduledStartTime.Value <= DateTime.UtcNow && !priceIsBusy))
                 {
                     return Response<bool>.Error("Game has started! No new cards can be selected.");
                 }

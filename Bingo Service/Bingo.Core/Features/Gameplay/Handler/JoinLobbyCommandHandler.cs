@@ -41,10 +41,14 @@ public class JoinLobbyCommandHandler : IRequestHandler<JoinLobbyCommand, Respons
                 r.Status == RoomStatusEnum.Waiting);
 
             // STRICT EXCLUSION: If the countdown has already hit zero, consider this room closed for new players.
-            // The RoomManagerService is currently transitioning it to InProgress. Let the user join the NEXT queue room instead.
+            // UNLESS there's an InProgress game, meaning this room is just waiting in queue.
             if (room != null && room.ScheduledStartTime.HasValue && room.ScheduledStartTime.Value <= DateTime.UtcNow)
             {
-                room = null;
+                bool priceIsBusy = await _repository.AnyAsync<Room>(r => r.CardPrice == request.CardPrice && r.Status == RoomStatusEnum.InProgress);
+                if (!priceIsBusy)
+                {
+                    room = null;
+                }
             }
 
             // 2. If no Waiting room exists, check if there is one InProgress.

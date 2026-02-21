@@ -148,9 +148,10 @@ public class BotPlayerService
             // Get an available bot
             var room = await _repository.FindOneAsync<Room>(r => r.RoomId == roomId);
             
-            // STRICT CHECK: Deny join if Room is not waiting, OR if the Countdown has hit zero. 
+            // STRICT CHECK: Deny join if Room is not waiting, OR if the Countdown has hit zero and no previous game is active. 
             // This prevents bots from sneaking in during the background service's async Thread Context Switch delay.
-            bool isCountdownCompleted = room?.ScheduledStartTime.HasValue == true && room.ScheduledStartTime.Value <= DateTime.UtcNow;
+            bool priceIsBusy = room != null && await _repository.AnyAsync<Room>(r => r.CardPrice == room.CardPrice && r.Status == RoomStatusEnum.InProgress);
+            bool isCountdownCompleted = room?.ScheduledStartTime.HasValue == true && room.ScheduledStartTime.Value <= DateTime.UtcNow && !priceIsBusy;
 
             if (room == null || room.Status != RoomStatusEnum.Waiting || isCountdownCompleted)
             {

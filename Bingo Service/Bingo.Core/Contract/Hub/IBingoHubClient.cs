@@ -17,5 +17,6 @@ namespace Bingo.Core.Contract.Hub
         Task CardSelectionChanged(int masterCardId, bool isLocked, long userId);
         Task PlayerCountUpdated(int count);
         Task RoomStatsUpdated(long roomId, int playerCount, decimal prizePool);
+        Task WaitingForPreviousGame(long roomId);
     }
 }

@@ -40,7 +40,8 @@ namespace Bingo.Core.Features.Gameplay.Handler
 
                 // 2. Load Room and Validate Status explicitly against the ScheduledStartTime
                 var room = await _repository.FindOneAsync<Room>(r => r.RoomId == request.RoomId);
-                bool isStarting = room != null && room.ScheduledStartTime.HasValue && room.ScheduledStartTime.Value <= DateTime.UtcNow;
+                bool priceIsBusy = room != null && await _repository.AnyAsync<Room>(r => r.CardPrice == room.CardPrice && r.Status == RoomStatusEnum.InProgress);
+                bool isStarting = room != null && room.ScheduledStartTime.HasValue && room.ScheduledStartTime.Value <= DateTime.UtcNow && !priceIsBusy;
 
                 if (room == null || room.Status != RoomStatusEnum.Waiting || isStarting)
                 {
