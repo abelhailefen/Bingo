@@ -15,6 +15,33 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
+// Import the store dynamically to avoid circular dependencies during initialization
+let store: any;
+export const injectStore = (_store: any) => {
+    store = _store;
+};
+
+api.interceptors.response.use((response) => {
+    if (store && response.headers['date']) {
+        const serverTime = new Date(response.headers['date']).getTime();
+        const localTime = Date.now();
+        // Offset = ServerTime - LocalTime
+        // To get the true time: Date.now() + offset
+        const offset = serverTime - localTime;
+        
+        // Only dispatch if the drift is significant (> 500ms differnce) to avoid spamming Redux
+        const currentOffset = store.getState().game.serverTimeOffset;
+        if (Math.abs(currentOffset - offset) > 500) {
+            import('../store/gameSlice').then(module => {
+                store.dispatch(module.setLobbyData({ ...store.getState().game, serverTimeOffset: offset }));
+                // We actually need the 'setServerTimeOffset' action.
+                store.dispatch(module.gameSlice.actions.setServerTimeOffset(offset));
+            });
+        }
+    }
+    return response;
+});
+
 // Auth
 export interface TelegramInitResponse {
     token: string;

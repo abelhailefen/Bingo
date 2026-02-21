@@ -6,6 +6,7 @@ interface GameState {
     wager: number | null;
     myCards: MasterCard[];
     lockedCards: number[];
+    serverTimeOffset: number;
 }
 
 const initialState: GameState = {
@@ -13,12 +14,16 @@ const initialState: GameState = {
     wager: null,
     myCards: [],
     lockedCards: [],
+    serverTimeOffset: 0,
 };
 
 export const gameSlice = createSlice({
     name: 'game',
     initialState,
     reducers: {
+        setServerTimeOffset: (state, action: PayloadAction<number>) => {
+            state.serverTimeOffset = action.payload;
+        },
         // Example inside gameSlice.ts
         setLobbyData: (state, action) => {
             state.roomId = action.payload.roomId;

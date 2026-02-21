@@ -17,6 +17,7 @@ import {
     updateLockedCards,
     syncLockedCards,
 } from '../store/gameSlice';
+import { store } from '../store';
 import type { RootState, AppDispatch } from '../store';
 import type { MasterCard } from '../types/gameplay';
 
@@ -173,7 +174,9 @@ export const Lobby = ({ userId, wager, onEnterGame, onBack }: LobbyProps) => {
         if (!scheduledStartTime) return;
 
         const interval = setInterval(() => {
-            const now = new Date().getTime();
+            // Read dynamically from store due to closure capture to avoid stale dependency on the effect hook
+            const currentOffset = store.getState().game.serverTimeOffset || 0;
+            const now = new Date().getTime() + currentOffset;
             const start = new Date(scheduledStartTime).getTime();
             const diff = Math.max(0, Math.floor((start - now) / 1000));
 

@@ -1,9 +1,10 @@
 ﻿import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import * as signalR from '@microsoft/signalr';
 import Confetti from 'react-confetti';
 import { getRoom, getMyCards, claimBingo, leaveLobby } from '../services/api';
 import { resetLobby } from '../store/gameSlice';
+import type { RootState } from '../store';
 import { RoomStatus } from '../types/enums';
 import type { Room } from '../types/room';
 
@@ -22,7 +23,6 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
     const [roomData, setRoomData] = useState<Room | null>(null);
     const [drawnNumbers, setDrawnNumbers] = useState<number[]>([]);
     const [currentNumber, setCurrentNumber] = useState<{ letter: string, val: number } | null>(null);
-    const [isRefreshing, setIsRefreshing] = useState(false);
     const [winner, setWinner] = useState<{ username: string, prize: number, type: string, cardNumbers?: any[] } | null>(null);
     const [gameOverMessage, setGameOverMessage] = useState<string | null>(null);
     const [timerSeconds, setTimerSeconds] = useState<number>(0);
@@ -126,8 +126,7 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
         onLeave();
     };
 
-    const initGame = useCallback(async (isRefreshCall = false) => {
-        if (isRefreshCall) setIsRefreshing(true);
+    const initGame = useCallback(async () => {
         try {
             const [roomRes, cardRes] = await Promise.all([
                 getRoom(roomId),
@@ -179,12 +178,14 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
 
             connection.on("NumberDrawn", (rId, number) => {
                 if (Number(rId) !== roomId) return;
-                setIsCountingUp(true);
                 
-                // Fallback: If we missed the GameStarted event or API failed, force status to InProgress
-                setRoomData(prev => {
-                    if (prev && prev.status === RoomStatus.Waiting) {
-                        return { ...prev, status: RoomStatus.InProgress };
+                // If we get a number but aren't counting up yet (missed GameStarted), start now
+                setIsCountingUp(prev => {
+                    if (!prev) {
+                        setIsWaitingForPreviousGame(false);
+                        setTimerSeconds(0);
+                        setRoomData(rd => rd ? { ...rd, status: RoomStatus.InProgress } : rd);
+                        return true;
                     }
                     return prev;
                 });
@@ -230,8 +231,6 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
             connectionRef.current = connection;
         } catch (err) {
             console.error(err);
-        } finally {
-            if (isRefreshCall) setIsRefreshing(false);
         }
     }, [roomId, userId, updateCurrentNumber]);
 
@@ -246,10 +245,13 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
     }, [initGame, dispatch]);
 
     // Timer Logic
+    const serverTimeOffset = useSelector((state: RootState) => state.game.serverTimeOffset) || 0;
+
     useEffect(() => {
         const interval = setInterval(() => {
             if (!roomData?.scheduledStartTime) return;
-            const now = new Date().getTime();
+            // Apply the offset so the UI clock perfectly matches the Postgres backend clock!
+            const now = new Date().getTime() + serverTimeOffset;
             const start = new Date(roomData.scheduledStartTime).getTime();
             if (roomData.status === RoomStatus.Waiting) {
                 const diff = Math.floor((start - now) / 1000);
@@ -519,9 +521,6 @@ export const GameRoom = ({ roomId, userId, onLeave }: GameRoomProps) => {
                 </button>
 
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => initGame(true)} disabled={isRefreshing} className="bg-slate-800 py-3 rounded-xl font-bold text-xs uppercase text-slate-300">
-                        {isRefreshing ? 'Syncing...' : 'Sync Data'}
-                    </button>
                     <button onClick={handleLeave} className="bg-red-950/30 border border-red-500/30 py-3 rounded-xl font-bold text-xs uppercase text-red-500">Back to Wagers</button>
                 </div>
             </div>
